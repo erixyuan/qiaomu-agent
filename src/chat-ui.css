@@ -16,9 +16,21 @@
 .qiaomu-agent--react .qa-conversation { position: relative; min-height: 0; overflow: hidden; }
 .qiaomu-agent--react .qa-conversation > div { height: 100%; overscroll-behavior: contain; scrollbar-width: thin; }
 .qiaomu-agent--react .qa-conversation-content { display: flex; flex-direction: column; gap: 28px; padding: 20px 20px 32px; min-height: 100%; }
-.qiaomu-agent--react .qa-empty { margin-block: auto; padding: 36px 0; }
-.qiaomu-agent--react .qa-empty h3 { font-size: 19px; margin: 0 0 8px; font-weight: 600; }
-.qiaomu-agent--react .qa-empty p { font-size: 14px; line-height: 1.7; color: var(--text-muted); }
+.qiaomu-agent--react .qa-empty { margin-block: auto; padding: 24px 0 8px; }
+.qiaomu-agent--react .qa-empty h3 { font-size: 18px; margin: 0 0 6px; font-weight: 600; }
+.qiaomu-agent--react .qa-empty p { margin: 0; font-size: 13px; line-height: 1.7; color: var(--text-muted); }
+.qiaomu-agent--react .qa-suggestions { display: flex; flex-direction: column; margin-top: 18px; border: 1px solid var(--background-modifier-border); border-radius: 12px; overflow: hidden; }
+.qiaomu-agent--react .qa-suggestions button { display: block; width: 100%; height: auto; min-height: 40px; padding: 9px 12px; border: 0; border-radius: 0; background: transparent; color: var(--text-normal); font-size: 13px; font-weight: 400; line-height: 1.5; text-align: left; white-space: normal; }
+.qiaomu-agent--react .qa-suggestions button + button { border-top: 1px solid var(--background-modifier-border); }
+.qiaomu-agent--react .qa-suggestions button:hover { background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-suggestions button:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
+.qiaomu-agent--react .qa-empty .qa-empty-keys { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 14px; color: var(--text-faint); font-size: 12px; }
+.qiaomu-agent--react .qa-empty-keys span { display: inline-flex; align-items: center; gap: 3px; }
+.qiaomu-agent--react .qa-empty-keys kbd { min-width: 18px; padding: 0 4px; border: 1px solid var(--background-modifier-border); border-radius: 4px; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 11px; line-height: 16px; text-align: center; }
+.qiaomu-agent--react .qa-empty-keys span kbd:last-of-type { margin-right: 3px; }
+.qiaomu-agent--react .qa-empty-connect { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 34px; margin-top: 16px; padding: 6px 14px; border: 0; border-radius: 8px; background: var(--text-normal); color: var(--background-primary); font-size: 13px; font-weight: 500; }
+.qiaomu-agent--react .qa-empty-connect:hover { background: var(--text-normal); opacity: .88; }
+.qiaomu-agent--react .qa-empty-connect:focus-visible { outline: 2px solid var(--text-normal); outline-offset: 2px; }
 .qiaomu-agent--react .qa-message { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-family: var(--qa-chat-font); font-size: var(--qa-chat-font-size, 15px); line-height: 1.75; letter-spacing: .01em; }
 .qiaomu-agent--react .qa-message.is-user { align-self: flex-end; max-width: 90%; }
 .qiaomu-agent--react .qa-message.is-user.is-editing { width: 100%; max-width: 100%; }
@@ -58,6 +70,8 @@
 .qiaomu-agent--react .qa-prompt-strip button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 .qiaomu-agent--react .qa-prompt-strip button:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
 .qiaomu-agent--react .qa-prompt-strip .qa-prompt-strip-manage { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
+.qiaomu-agent--react .qa-command-group { padding: 10px 8px 4px; color: var(--text-faint); font-size: 11px; font-weight: 500; }
+.qiaomu-agent--react .qa-command-group:first-child { padding-top: 4px; }
 .qiaomu-agent--react .qa-command-empty { padding: 9px; color: var(--text-muted); font-size: 13px; }
 .qiaomu-agent--react .qa-status { padding: 0 4px 8px; }
 .qiaomu-agent--react .qa-prompt,
@@ -223,3 +237,24 @@
 .qiaomu-agent--react .qa-add-menu button[aria-pressed="true"] .qa-add-switch { background: var(--text-normal); }
 .qiaomu-agent--react .qa-add-menu button[aria-pressed="true"] .qa-add-switch::after { transform: translateX(10px); }
 @media (prefers-reduced-motion: reduce) { .qa-add-switch, .qa-add-switch::after { transition: none; } }
+
+/* Working states breathe quietly; reduced motion stops them (see above). */
+@keyframes qa-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+.qiaomu-agent--react .qa-working-dot { animation: qa-pulse 1.4s ease-in-out infinite; }
+.qiaomu-agent--react .qa-thinking[role="status"] { display: flex; align-items: center; gap: 8px; }
+.qiaomu-agent--react .qa-thinking[role="status"]::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: qa-pulse 1.4s ease-in-out infinite; }
+
+/* Touch: no grey flash, a pressed state instead of hover, room for the thumb. */
+@media (pointer: coarse) {
+  .qiaomu-agent--react button { -webkit-tap-highlight-color: transparent; }
+  .qiaomu-agent--react :is(.qa-suggestions button, .qa-command-menu button, .qa-prompt-strip button, .qa-message-actions button, .qa-header button, .qa-add-menu button):active { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
+  .qiaomu-agent--react .qa-prompt-strip { scrollbar-width: none; }
+  .qiaomu-agent--react .qa-prompt-strip::-webkit-scrollbar { display: none; }
+}
+.is-mobile .qiaomu-agent--react .qa-empty { padding-top: 8px; }
+.is-mobile .qiaomu-agent--react .qa-suggestions button { min-height: 46px; padding-block: 11px; font-size: 15px; }
+.is-mobile .qiaomu-agent--react .qa-empty p { font-size: 14px; }
+.is-mobile .qiaomu-agent--react .qa-empty .qa-empty-keys { display: none; }
+.is-mobile .qiaomu-agent--react .qa-empty-connect { min-height: 44px; }
+.is-mobile .qiaomu-agent--react .qa-prompt-textarea { max-height: min(180px, 28dvh); }
+.is-mobile .qiaomu-agent--react .qa-command-menu button { min-height: 44px; font-size: 15px; }

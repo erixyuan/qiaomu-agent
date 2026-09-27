@@ -48,14 +48,45 @@ it("slash Enter inserts a template, Escape preserves draft, and IME Enter does n
   fireEvent.change(input, { target: { value: "/" } }); fireEvent.keyDown(input, { key: "Escape" }); expect(screen.queryByRole("listbox")).toBeNull(); expect((input as HTMLTextAreaElement).value).toBe("/");
   fireEvent.compositionStart(input); fireEvent.keyDown(input, { key: "Enter", isComposing: true }); expect(send).not.toHaveBeenCalled(); fireEvent.compositionEnd(input);
 });
-it("pinned prompts and quick prompts fill the composer without sending or losing a draft", () => {
-  const { input, props } = setup();
+it("the empty conversation offers prompts for what is on screen, and the strip returns once it starts", async () => {
+  const { input, props, rerender, send, chat } = setup();
+  expect(screen.getByRole("heading", { name: "从一个想法开始" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "管理 Prompt 库" })).toBeNull();
+  fireEvent.change(input, { target: { value: "已有问题" } });
+  fireEvent.click(screen.getByRole("button", { name: "在库里找笔记…" }));
+  expect((input as HTMLTextAreaElement).value).toMatch(/^已有问题\n\n在我的库里找/);
+  expect(send).not.toHaveBeenCalled();
+  rerender(<ChatPanel {...props} customPrompts={[{ id: "p", name: "周报", body: "写周报", pinned: true }]} editorSelection={{ label: "选中 2 行 · 草稿", detail: "x" }} />);
+  expect(screen.getByRole("heading", { name: "针对选中的文字" })).toBeTruthy();
+  const offered = screen.getByRole("group", { name: "可以这样开始" }).querySelectorAll("button");
+  expect([...offered].map((b) => b.textContent)).toEqual(["周报", "润色这段", "讲明白这段", "压缩到一半"]);
+  rerender(<ChatPanel {...props} />);
+  fireEvent.change(input, { target: { value: "开始" } });
+  fireEvent.submit(input.closest("form")!);
+  await waitFor(() => expect(chat.status).toBe("ready"));
   fireEvent.change(input, { target: { value: "已有问题" } });
   fireEvent.click(screen.getByRole("button", { name: "总结" }));
   expect((input as HTMLTextAreaElement).value).toBe("已有问题\n\n总结");
   expect(props.onManagePrompts).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "管理 Prompt 库" }));
   expect(props.onManagePrompts).toHaveBeenCalledOnce();
+});
+it("without any model the empty conversation leads to connecting one", () => {
+  const { props, rerender } = setup();
+  rerender(<ChatPanel {...props} sources={[]} />);
+  fireEvent.click(screen.getByRole("button", { name: "连接模型" }));
+  expect(props.onManageModels).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("group", { name: "可以这样开始" })).toBeNull();
+});
+it("the Prompt menu groups own prompts before the built-in library and searches all of it", () => {
+  const { input } = setup();
+  fireEvent.change(input, { target: { value: "/" } });
+  const menu = screen.getByRole("listbox", { name: "Prompt 菜单" });
+  expect([...menu.querySelectorAll(".qa-command-group")].map((g) => g.textContent)).toEqual(["我的 Prompt", "随时可用"]);
+  fireEvent.change(input, { target: { value: "/润色" } });
+  expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["润色这段", "管理自定义 Prompt…"]);
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect((input as HTMLTextAreaElement).value).toMatch(/^润色选中的文字/);
 });
 it("save current draft opens Prompt editor and leaves the draft untouched", () => {
   const { input, props } = setup();
