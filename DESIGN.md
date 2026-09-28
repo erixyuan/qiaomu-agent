@@ -55,7 +55,7 @@ The chat sidebar should feel like a focused part of Obsidian, not an embedded we
 
 - A single outlined composer contains removable file/image context chips, text input, and a bottom toolbar for attachments, Skill, permission, model, reasoning effort and send/stop.
 - Model selection opens a host dropdown anchored to its trigger, not a modal. Manual ID entry remains a separate explicit action. Capability lists come from Codex model/list or ACP configOptions.
-- `/` at the start of a single-line draft opens searchable Prompt choices. Enter inserts rather than sends; Escape keeps the draft; IME composition never submits. Custom templates can be created/edited/copied/deleted through the menu.
+- `/` at the start of a single-line draft opens searchable Prompt choices. Enter runs the prompt (see Prompt library), Shift+Enter inserts it; Escape keeps the draft; IME composition never submits.
 - `@` at a token boundary opens the native vault file picker. Upload, paste and drop share attachment ingestion and limits (6 files, 5 MB each, 10 MB total). Unsupported inputs retain the draft and display an actionable error.
 - Reading older content disables automatic scroll-follow; returning near the bottom resumes it.
 - Enter sends; Shift+Enter inserts a line break.
@@ -174,11 +174,24 @@ The chat sidebar should feel like a focused part of Obsidian, not an embedded we
 ### First screen and touch polish (September 27)
 
 - The empty conversation follows what is on screen: editor selection, then reading context, then today's daily note (a bare date name, optionally with the weekday; older daily notes count as ordinary notes), then the open note, otherwise the vault. The heading, one line saying what will be sent, the composer placeholder and four prompts change with it. Pinned custom prompts come first. Nothing is random, so re-renders stay stable.
-- Prompts fill the composer and never send. Prompts ending in "…" leave the sentence for the user to finish. The library lives in `src/services/starter-prompts.ts` as Chinese prompts for real note work: polish, explain, restructure a selection; argument, quotes, reading notes; today's review and tasks; key points, related notes and links, frontmatter, self-test; finding notes, sorting thoughts, finding writing angles, learning a concept, making a decision, a weekly review.
-- The `/` menu lists 我的 Prompt, then the scene's group and 随时可用. A query searches the whole library. Group labels are not options, and arrow keys keep the active option in view.
+- Prompts ending in "…" ask for a blank before sending (superseded on September 28: prompts now run in one click, see Prompt library). The library lives in `src/services/starter-prompts.ts` as Chinese prompts for real note work: polish, explain, restructure a selection; argument, quotes, reading notes; today's review and tasks; key points, related notes and links, frontmatter, self-test; finding notes, sorting thoughts, finding writing angles, learning a concept, making a decision, a weekly review.
+- Group labels in the `/` menu are not options, and arrow keys keep the active option in view.
 - With no model source, the first screen offers one neutral ink button, 连接模型, instead of prompts.
 - The shortcut strip appears only once a conversation has started, so the first screen does not repeat itself. Keyboard hints (`/`, `@`, ⇧↵) appear on desktop only.
 - Touch: no tap highlight, and a pressed background replaces hover. Prompt and menu rows are at least 44 px tall. The strip scrolls without a scrollbar, and the textarea is capped at 28dvh so the keyboard leaves room for the conversation. Running states pulse a 6 px dot, which stops under reduced motion.
+
+### Prompt library (September 28)
+
+Reference: Raycast AI Commands (one press runs a prompt; `{argument}` asks before running; built-ins can be duplicated, not deleted), Copilot for Obsidian (commands as Markdown files, slash menu and palette), TypingMind (`{{variable}}` blanks), AI Elements `Suggestion` (clicking a suggestion sends it).
+
+- Running is separate from editing. A chip, a first-screen suggestion, a `/` choice or a palette command sends the prompt at once, with the note, selection or reading context that already goes along. Text in the composer goes with it; if the prompt has a blank without a default, that text fills the blank instead.
+- Blanks (`{{名称}}`, `{{名称|默认值}}`, Raycast `{argument name= default= options=}`) open a small form above the composer: one field per blank, options as a select, Enter sends, Esc cancels. `{selection}` and `{clipboard}` ask for the text only when there is none. `{note}`, `{reading}`, `{date}`, `{time}`, `{day}` are filled from the screen.
+- The strip shows pinned prompts in the user's order, then up to three that fit the screen, then a fixed 全部 Prompt button (Lucide Library) outside the scrolling chips. Right click or long press: 填入输入框, pin, edit, manage. The picker groups 已固定, 适合现在, 最近常用, 我的, then categories; search matches title, body, category, tags and source.
+- A message sent from a prompt shows its title (Sparkles) and what the user added; the full text is folded under 完整 Prompt.
+- Settings → Prompt is the library: tabs 已启用 / 全部 / 我的 / 场景 / 乔木精选 / Yao Open Prompts with counts, search and a category filter; each row has an enable switch, pin and an overflow menu (edit, copy as mine, open file, source, reset, delete to trash). The editor names blanks as the user types. The same panel opens as a modal from the chat.
+- Scene prompts are on by default; the bundled 乔木精选 (50) and a curated Yao Open Prompts set (31, CC BY 4.0, credited in the panel) are off until turned on. ai-boost (GPL-3.0) and image prompts are not bundled. `tools/import-quickprompt.mjs` regenerates `src/prompts/library.json` from a Qiaomu-QuickPrompt checkout.
+- The user's prompts are Markdown files in one visible folder (default `Qiaomu Agent/Prompts`, created with the first saved prompt): frontmatter `id`, `title`, `category`, `tags`, `run`; the body is the prompt. Editing a built-in prompt saves a file with the built-in id, which replaces it until 恢复默认 trashes the file. Enabled, pinned and usage state stays in plugin settings. Hand edits and synced changes reload automatically.
+- Each enabled prompt is also a palette command (运行 Prompt：…) so it can take a hotkey, plus 运行 Prompt… to pick any of them. Before 0.5, saved templates and edited quick prompts moved to files once on load.
 
 ## 对话配色
 

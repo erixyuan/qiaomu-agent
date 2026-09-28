@@ -67,13 +67,13 @@ export const STARTER_PROMPTS: Record<StarterScene, StarterPrompt[]> = {
     { id: "note-publish", label: "改写成短文", body: "把当前笔记改写成一篇可以发布的短文：标题要具体，开头用一个真实场景引入，800 字以内，保留我的观点。" },
   ],
   vault: [
-    { id: "vault-find", label: "在库里找笔记…", body: "在我的库里找和下面这个主题有关的笔记，按相关度列出，每篇用一句话说明讲了什么：\n" },
-    { id: "vault-dump", label: "整理脑子里的想法…", body: "我把想法一股脑写在下面，帮我整理成结构清楚的笔记，尽量保留我的原话：\n" },
-    { id: "vault-angles", label: "给写作找角度…", body: "我想围绕下面这个主题写一篇笔记。先列出 8 个可以展开的角度，再推荐最值得写的一个并说明理由：\n" },
-    { id: "vault-learn", label: "学一个新概念…", body: "用费曼学习法教我一个概念：先一句话定义，再打个比方，最后出一道检验理解的小题。概念：" },
-    { id: "vault-decide", label: "帮我做个决定…", body: "我在纠结一个决定。先问我 3 个最关键的问题，等我回答后再列出各选项的利弊和最坏情况。情况是：\n" },
+    { id: "vault-find", label: "在库里找笔记…", body: "在我的库里找和「{{主题}}」有关的笔记，按相关度列出，每篇用一句话说明讲了什么。" },
+    { id: "vault-dump", label: "整理脑子里的想法…", body: "帮我把下面这些想法整理成结构清楚的笔记，尽量保留我的原话：\n\n{{想法}}" },
+    { id: "vault-angles", label: "给写作找角度…", body: "我想围绕「{{主题}}」写一篇笔记。先列出 8 个可以展开的角度，再推荐最值得写的一个并说明理由。" },
+    { id: "vault-learn", label: "学一个新概念…", body: "用费曼学习法教我「{{概念}}」：先一句话定义，再打个比方，最后出一道检验理解的小题。" },
+    { id: "vault-decide", label: "帮我做个决定…", body: "我在纠结一个决定：{{情况}}\n\n先问我 3 个最关键的问题，等我回答后再列出各选项的利弊和最坏情况。" },
     { id: "vault-weekly", label: "做一次周回顾", body: "陪我做一次周回顾：一次只问一个问题，帮我理清这周最重要的进展、卡住的地方和下周的重点，最后整理成一篇笔记。" },
-    { id: "vault-template", label: "设计笔记模板…", body: "帮我设计一个 Obsidian 笔记模板，包括 frontmatter 属性和正文小节，用途是：" },
+    { id: "vault-template", label: "设计笔记模板…", body: "帮我设计一个用于「{{用途}}」的 Obsidian 笔记模板，包括 frontmatter 属性和正文小节。" },
   ],
 };
 
