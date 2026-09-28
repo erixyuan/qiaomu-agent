@@ -57,6 +57,7 @@ export interface QiaomuSettings {
   hiddenAgents: string[];
   /** Explicit composer visibility overrides. Discovered callable agents show by default. */
   agentVisibility: Record<string, boolean>;
+  chatTheme: import("./services/palettes").ChatTheme;
   chatFontFamily: "system" | "obsidian" | "text" | "custom";
   /** Family name used when chatFontFamily is "custom" (for example a font another plugin loads). */
   chatFontCustom: string;
