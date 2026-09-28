@@ -1,9 +1,9 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import type { ApprovalRequest, ApprovalState, ChatActivity, ChatAttachment, ChatBackend, ChatCallbacks, ChatMessage, ChatRequest, ContextUsage, FileChange, GeneratedAttachment, TurnChanges } from "../types";
+import type { ApprovalRequest, ApprovalState, ChatActivity, ChatAttachment, ChatBackend, ChatCallbacks, ChatMessage, ChatPlan, ChatRequest, ContextUsage, FileChange, GeneratedAttachment, TimelineEntry, TurnChanges } from "../types";
 
 export type AgentMessage = UIMessage<
-  { createdAt: number; backend?: string; sourcePath?: string; attachments?: import("../types").ChatAttachment[] },
-  { activity: ChatActivity; status: string; attachment: ChatAttachment; changes: TurnChanges; approval: ApprovalState; usage: ContextUsage }
+  { createdAt: number; finishedAt?: number; backend?: string; sourcePath?: string; attachments?: import("../types").ChatAttachment[] },
+  { activity: ChatActivity; plan: ChatPlan; status: string; attachment: ChatAttachment; changes: TurnChanges; approval: ApprovalState; usage: ContextUsage }
 >;
 
 /** Per-turn host services: change tracking, file access and approvals. */
@@ -37,8 +37,43 @@ export function messageUsage(message: AgentMessage): ContextUsage | undefined {
   return part?.type === "data-usage" ? part.data : undefined;
 }
 
-export const messageText = (message: AgentMessage): string => message.parts
-  .filter((part) => part.type === "text").map((part) => part.text).join("");
+/** A reply's text runs in order; steps between them split the text into paragraphs. */
+export const textRuns = (message: AgentMessage): string[] => message.parts
+  .flatMap((part) => part.type === "text" && part.text.trim() ? [part.text] : []);
+
+export const messageText = (message: AgentMessage): string => textRuns(message).join(TEXT_RUN_SEPARATOR);
+
+const TEXT_RUN_SEPARATOR = "\n\n";
+
+function messageTimeline(message: AgentMessage): TimelineEntry[] | undefined {
+  if (!message.parts.some((part) => part.type === "data-activity" || part.type === "data-plan")) return undefined;
+  return message.parts.flatMap((part): TimelineEntry[] => part.type === "text" ? (part.text.trim() ? [{ text: part.text.length }] : [])
+    : part.type === "data-activity" ? [{ activity: part.data.id }] : part.type === "data-plan" ? [{ plan: true }] : []);
+}
+
+/** Rebuilds the ordered parts of a stored reply; falls back to steps-then-text when the timeline no longer fits the text. */
+function timelineParts(message: ChatMessage): AgentMessage["parts"] {
+  const activities = new Map((message.activities ?? []).map((data) => [data.id, data]));
+  const legacy: AgentMessage["parts"] = [
+    ...(message.plan ? [{ type: "data-plan" as const, id: "plan", data: message.plan }] : []),
+    ...[...activities.values()].map((data) => ({ type: "data-activity" as const, id: data.id, data })),
+    { type: "text", text: message.content }];
+  const timeline = message.timeline;
+  if (!timeline) return message.activities?.length || message.plan ? legacy : [{ type: "text", text: message.content }];
+  const runs = timeline.flatMap((entry) => "text" in entry ? [entry.text] : []);
+  if (runs.reduce((sum, length) => sum + length, 0) + Math.max(0, runs.length - 1) * TEXT_RUN_SEPARATOR.length !== message.content.length) return legacy;
+  let offset = 0;
+  return timeline.flatMap((entry): AgentMessage["parts"] => {
+    if ("text" in entry) {
+      const text = message.content.slice(offset, offset + entry.text);
+      offset += entry.text + TEXT_RUN_SEPARATOR.length;
+      return [{ type: "text", text }];
+    }
+    if ("plan" in entry) return message.plan ? [{ type: "data-plan", id: "plan", data: message.plan }] : [];
+    const data = activities.get(entry.activity);
+    return data ? [{ type: "data-activity", id: data.id, data }] : [];
+  });
+}
 
 export function toStoredMessage(message: AgentMessage): ChatMessage {
   const attachments = new Map<string, ChatAttachment>();
@@ -50,6 +85,9 @@ export function toStoredMessage(message: AgentMessage): ChatMessage {
     backend: message.metadata?.backend, sourcePath: message.metadata?.sourcePath,
     attachments: [...attachments.values()].map((attachment) => attachment.vaultPath ? { ...attachment, url: undefined } : attachment),
     activities: message.parts.filter((p) => p.type === "data-activity").map((p) => p.data),
+    timeline: messageTimeline(message),
+    plan: (() => { const part = message.parts.find((p) => p.type === "data-plan"); return part?.type === "data-plan" ? part.data : undefined; })(),
+    finishedAt: message.metadata?.finishedAt,
     changes: (() => { const part = message.parts.find((p) => p.type === "data-changes"); return part && part.type === "data-changes" ? storableChanges(part.data) : undefined; })(),
     usage: messageUsage(message),
   };
@@ -58,9 +96,8 @@ export function fromStoredMessage(message: ChatMessage, resolveAttachment: (atta
   const attachments = (message.attachments ?? []).map(resolveAttachment);
   return {
     id: message.id, role: message.role === "status" ? "system" : message.role,
-    metadata: { createdAt: message.createdAt, backend: message.backend, sourcePath: message.sourcePath, attachments },
-    parts: [ { type: "text", text: message.content },
-      ...(message.activities ?? []).map((data) => ({ type: "data-activity" as const, id: data.id, data })),
+    metadata: { createdAt: message.createdAt, finishedAt: message.finishedAt, backend: message.backend, sourcePath: message.sourcePath, attachments },
+    parts: [ ...timelineParts(message),
       ...(message.changes?.files.length ? [{ type: "data-changes" as const, id: "changes", data: message.changes }] : []),
       ...(message.usage ? [{ type: "data-usage" as const, id: "usage", data: message.usage }] : []),
       ...(message.role === "assistant" ? attachments.flatMap((data) => [
@@ -101,14 +138,22 @@ export class AgentTransport implements ChatTransport<AgentMessage> {
             turn = prepared.turn;
             controller.signal.throwIfAborted();
             emit({ type: "start", messageMetadata: { createdAt: Date.now(), backend: backend.label, sourcePath: request.activeFilePath } });
-            emit({ type: "text-start", id: "response" });
             const activities = new Map<string, ChatActivity>();
             const hooks = turn;
+            // Text opens a run on demand; a new step, plan, file or question ends it, so the reply keeps its order.
+            let run: string | null = null; let runs = 0;
+            const endRun = () => { if (run) { emit({ type: "text-end", id: run }); run = null; } };
             await backend.send(request, {
-              onText: (delta) => emit({ type: "text-delta", id: "response", delta }),
+              onText: (delta) => {
+                if (!run) { run = `response-${++runs}`; emit({ type: "text-start", id: run }); }
+                emit({ type: "text-delta", id: run, delta });
+              },
+              onTextEnd: endRun,
               onStatus: (data) => emit({ type: "data-status", data, transient: true }),
+              onPlan: (data) => { endRun(); emit({ type: "data-plan", id: "plan", data }); },
               onActivity: (next) => {
                 const previous = activities.get(next.id);
+                if (!previous) endRun();
                 const data = { ...previous, ...next, label: next.label === "工具调用" && previous ? previous.label : next.label, detail: next.detail ?? previous?.detail };
                 activities.set(next.id, data);
                 emit({ type: "data-activity", id: next.id, data });
@@ -119,6 +164,7 @@ export class AgentTransport implements ChatTransport<AgentMessage> {
                   url: incoming.base64 ? `data:${incoming.mediaType};base64,${incoming.base64}` : incoming.localPath,
                 };
                 if (!attachment.url) throw new Error(`无法展示生成文件 ${attachment.name}`);
+                endRun();
                 emit({ type: "file", url: attachment.url, mediaType: attachment.mediaType });
                 emit({ type: "data-attachment", id: attachment.id, data: attachment });
               },
@@ -126,6 +172,7 @@ export class AgentTransport implements ChatTransport<AgentMessage> {
               onFileIntent: hooks?.onFileIntent,
               host: hooks?.host,
               requestApproval: hooks?.awaitApproval ? async (approval) => {
+                endRun();
                 emit({ type: "data-approval", id: approval.id, data: { ...approval, status: "pending" } });
                 const chosen = await hooks.awaitApproval!(approval, controller.signal).catch(() => null);
                 emit({ type: "data-approval", id: approval.id, data: { ...approval, status: chosen ? "decided" : "cancelled", ...(chosen ? { chosen } : {}) } });
@@ -136,7 +183,8 @@ export class AgentTransport implements ChatTransport<AgentMessage> {
             const finish = turn?.finish; turn = undefined;
             const files = finish ? await finish() : [];
             if (files.length) emit({ type: "data-changes", id: "changes", data: { files } });
-            emit({ type: "text-end", id: "response" });
+            endRun();
+            emit({ type: "message-metadata", messageMetadata: { finishedAt: Date.now() } });
             emit({ type: "finish", finishReason: "stop" });
           } catch (error) {
             emit(controller.signal.aborted ? { type: "abort" } : { type: "error", errorText: error instanceof Error ? error.message : String(error) });

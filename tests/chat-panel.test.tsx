@@ -303,7 +303,8 @@ it("shows progress in the reply placeholder, then marks the finished reply as la
   });
   fireEvent.change(input, { target: { value: "你好" } });
   fireEvent.keyDown(input, { key: "Enter" });
-  expect(await screen.findByRole("status")).toHaveProperty("textContent", "读取笔记");
+  expect(await screen.findByText("读取笔记")).toBeTruthy();
+  expect(screen.getByRole("status")).toBeTruthy();
   finish();
   await waitFor(() => expect(chat.status).toBe("ready"));
   const replies = container.querySelectorAll(".qa-message.is-assistant");
@@ -334,4 +335,30 @@ it("header shows the brand and opens plugin settings", () => {
   expect(screen.getByText("Agent")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "设置" }));
   expect(props.onOpenSettings).toHaveBeenCalled();
+});
+it("shows work in order while running, then folds it into 已处理 with the final answer in view", async () => {
+  const { input, send, chat, container } = setup();
+  let finish!: () => void;
+  send.mockImplementationOnce(async (_request, callbacks) => {
+    callbacks.onText("我先找歌单。");
+    callbacks.onActivity({ id: "s1", label: "搜索 歌单", status: "completed", kind: "explore", actions: [{ type: "search", target: "歌单" }] });
+    callbacks.onActivity({ id: "s2", label: "读取 a.md", status: "running", kind: "explore", actions: [{ type: "read", target: "a.md" }] });
+    await new Promise<void>((resolve) => { finish = resolve; });
+    callbacks.onActivity({ id: "s2", label: "读取 a.md", status: "completed", kind: "explore", actions: [{ type: "read", target: "a.md" }] });
+    callbacks.onActivity({ id: "c1", label: "npm test", status: "completed", kind: "command", detail: "$ npm test\nok" });
+    callbacks.onText("已添加到歌单。");
+  });
+  fireEvent.change(input, { target: { value: "加歌" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(await screen.findByText("正在探索")).toBeTruthy();
+  expect(screen.getByText("我先找歌单。")).toBeTruthy();
+  finish();
+  await waitFor(() => expect(chat.status).toBe("ready"));
+  const worked = container.querySelector(".qa-worked") as HTMLDetailsElement;
+  expect(worked.querySelector("summary")!.textContent).toMatch(/^已处理 \d+ 秒$/);
+  expect(worked.open).toBe(false);
+  expect(worked.textContent).toContain("我先找歌单。");
+  expect(worked.textContent).toContain("已探索1 个文件，1 次搜索");
+  expect(worked.textContent).toContain("已运行npm test");
+  expect(container.querySelector(".qa-worked + .qa-reply-segment")!.textContent).toBe("已添加到歌单。");
 });

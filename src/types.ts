@@ -110,6 +110,10 @@ export interface ChatMessage {
   sourcePath?: string;
   attachments?: ChatAttachment[];
   activities?: ChatActivity[];
+  /** Order of text, steps and plan; absent in replies saved before steps were interleaved. */
+  timeline?: TimelineEntry[];
+  plan?: ChatPlan;
+  finishedAt?: number;
   changes?: TurnChanges;
   /** Context window occupancy the backend reported after this reply. */
   usage?: ContextUsage;
@@ -168,7 +172,25 @@ export interface ChatActivity {
   label: string;
   status: ChatActivityStatus;
   detail?: string;
+  /** What the step did, so the reply can name it the way Codex does; absent for generic tools. */
+  kind?: "command" | "explore" | "edit" | "search" | "tool" | "image";
+  /** Read-only look-arounds an explore step made. */
+  actions?: ExploreAction[];
+  /** Lines an edit added and removed. */
+  added?: number;
+  removed?: number;
 }
+
+export interface ExploreAction { type: "read" | "search" | "list"; target: string }
+
+/** The agent's to-do list for the turn, updated in place as it works. */
+export interface ChatPlan {
+  explanation?: string;
+  steps: Array<{ step: string; status: "pending" | "inProgress" | "completed" }>;
+}
+
+/** Where a reply's pieces fell in time: text runs (by length, sliced from `content`), steps and the plan. */
+export type TimelineEntry = { text: number } | { activity: string } | { plan: true };
 
 export interface ChatRequest {
   prompt: string;
@@ -208,6 +230,10 @@ export interface ChatCallbacks {
   onText: (text: string) => void;
   onStatus: (status: string) => void;
   onActivity?: (activity: ChatActivity) => void;
+  /** The agent's plan changed; replaces the previous one. */
+  onPlan?: (plan: ChatPlan) => void;
+  /** The current text run ended (e.g. one agent message finished); the next text starts a new paragraph. */
+  onTextEnd?: () => void;
   onAttachment?: (attachment: GeneratedAttachment) => void | Promise<void>;
   onUsage?: (usage: ContextUsage) => void;
   /** The agent is about to write these absolute paths; `before` is given when the agent reports it. */

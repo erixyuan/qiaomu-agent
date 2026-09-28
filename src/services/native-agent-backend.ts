@@ -5,9 +5,11 @@ import type {
   ChatActivityStatus,
   ChatBackend,
   ChatCallbacks,
+  ChatPlan,
   ChatRequest,
   CliDetection,
   ContextUsage,
+  ExploreAction,
   GeneratedAttachment,
   PermissionMode,
   ModelChoice,
@@ -220,6 +222,7 @@ export class NativeAgentBackend implements ChatBackend {
   async send(request: ChatRequest, callbacks: ChatCallbacks, signal: AbortSignal): Promise<void> {
     if (this.activeCallbacks) throw new Error(`${this.detection.label} 正在处理另一条消息`);
     this.activeCallbacks = callbacks;
+    this.reasoning.clear();
     this.mediaTasks = [];
     this.emittedMedia.clear();
     this.activePermissionMode = request.permissionMode;
@@ -384,7 +387,7 @@ export class NativeAgentBackend implements ChatBackend {
           : { type: "readOnly" },
     };
     signal.throwIfAborted();
-    this.activeCallbacks?.onStatus("Codex 正在思考…");
+    this.activeCallbacks?.onStatus("正在思考…");
     const completion = this.waitForTurn();
     try {
       const result = await this.process.request("turn/start", params, 30_000);
@@ -415,7 +418,7 @@ export class NativeAgentBackend implements ChatBackend {
     }
     const images = (request.attachments ?? []).filter((a) => a.mediaType.startsWith("image/"));
     if (images.length && !this.imageInput) throw new Error("当前 ACP 连接未声明图片能力，请移除图片或切换连接");
-    this.activeCallbacks?.onStatus(`${this.detection.label} 正在思考…`);
+    this.activeCallbacks?.onStatus("正在思考…");
     await this.process.request("session/prompt", {
       sessionId: this.sessionId,
       prompt: [{ type: "text", text: effectivePrompt(request, firstPrompt) }, ...images.map((a) => ({ type: "image", mimeType: a.mediaType, data: a.url?.split(",")[1] }))],
@@ -423,6 +426,8 @@ export class NativeAgentBackend implements ChatBackend {
     this.prompted = true;
   }
 
+  /** Reasoning summaries streamed this turn, keyed by item and part; only their headings are shown. */
+  private readonly reasoning = new Map<string, string>();
   private turnResolve: (() => void) | null = null;
   private turnReject: ((error: Error) => void) | null = null;
 
@@ -446,10 +451,20 @@ export class NativeAgentBackend implements ChatBackend {
     if (this.detection.id === "codex") {
       if (method === "item/agentMessage/delta" || method === "item/plan/delta") {
         const delta = stringAt(params, "delta");
-        if (delta) this.activeCallbacks?.onText(delta);
+        if (delta) { this.reasoning.clear(); this.activeCallbacks?.onStatus(""); this.activeCallbacks?.onText(delta); }
+      } else if (method === "item/reasoning/summaryTextDelta") {
+        const key = `${stringAt(params, "itemId")}:${String(record(params)?.summaryIndex ?? 0)}`;
+        const summary = (this.reasoning.get(key) ?? "") + (stringAt(params, "delta") ?? "");
+        this.reasoning.set(key, summary);
+        const heading = reasoningHeading(summary);
+        if (heading) this.activeCallbacks?.onStatus(heading);
+      } else if (method === "turn/plan/updated") {
+        const plan = codexPlan(params);
+        if (plan) this.activeCallbacks?.onPlan?.(plan);
       } else if (method === "item/started" || method === "item/completed") {
         const item = record(record(params)?.item);
-        if (item) this.emitCodexActivity(item, method === "item/completed");
+        if (item?.type === "agentMessage" && method === "item/completed") this.activeCallbacks?.onTextEnd?.();
+        else if (item) this.emitCodexActivity(item, method === "item/completed");
       } else if (method === "thread/tokenUsage/updated") {
         this.reportUsage(codexContextUsage(params));
       } else if (method === "turn/completed") {
@@ -473,6 +488,15 @@ export class NativeAgentBackend implements ChatBackend {
       this.reportUsage(acpContextUsage(update));
       return;
     }
+    if (kind === "plan") {
+      const steps = arrayAt(update, "entries").map(record).flatMap((entry) => {
+        const step = typeof entry?.content === "string" ? entry.content.trim() : "";
+        const status = entry?.status === "completed" ? "completed" : entry?.status === "in_progress" ? "inProgress" : "pending";
+        return step ? [{ step, status } as ChatPlan["steps"][number]] : [];
+      });
+      if (steps.length) this.activeCallbacks?.onPlan?.({ steps });
+      return;
+    }
     if (kind === "agent_message_chunk") {
       const text = stringAt(update, "content", "text");
       if (text) this.activeCallbacks?.onText(text);
@@ -482,11 +506,15 @@ export class NativeAgentBackend implements ChatBackend {
       const id = typeof update.toolCallId === "string" ? update.toolCallId : `tool-${Date.now()}`;
       const intents = acpFileIntents(update);
       if (intents.length) this.activeCallbacks?.onFileIntent?.(intents);
+      const label = typeof update.title === "string" ? update.title : typeof update.name === "string" ? update.name : "工具调用";
+      // Reads and searches fold into one "已探索" row; titles already say what other tools did, so they stay as given.
+      const explore = update.kind === "read" ? "read" : update.kind === "search" ? "search" : null;
       this.activeCallbacks?.onActivity?.({
         id,
-        label: typeof update.title === "string" ? update.title : typeof update.name === "string" ? update.name : "工具调用",
+        label,
         status: activityStatus(update.status),
         detail: toolDetail(update.content),
+        ...(explore && label !== "工具调用" ? { kind: "explore" as const, actions: [{ type: explore, target: label } satisfies ExploreAction] } : {}),
       });
     }
   }
@@ -499,18 +527,12 @@ export class NativeAgentBackend implements ChatBackend {
       const intents = codexFileIntents(item);
       if (intents.length) this.activeCallbacks?.onFileIntent?.(intents);
     }
-    const labels: Record<string, string> = {
-      commandExecution: "执行命令",
-      fileChange: "修改文件",
-      mcpToolCall: "调用 MCP 工具",
-      webSearch: "搜索网络",
-      imageGeneration: "生成图片",
-    };
+    // Between steps Codex is thinking again; while a step runs, its own row shows the progress.
+    this.activeCallbacks?.onStatus(completed ? "正在思考…" : "");
     this.activeCallbacks?.onActivity?.({
       id,
-      label: typeof item.title === "string" ? item.title : labels[type] ?? type,
+      ...codexActivity(item, type),
       status: completed ? activityStatus(item.status ?? "completed") : "running",
-      detail: typeof item.command === "string" ? item.command : undefined,
     });
     if (completed && (type === "imageGeneration" || type === "imageView")) this.emitCodexImage(item, type);
   }
@@ -677,4 +699,109 @@ function toolDetail(value: unknown): string | undefined {
     if (typeof item?.path === "string") return item.path;
   }
   return undefined;
+}
+
+const CODEX_LABELS: Record<string, string> = {
+  commandExecution: "执行命令",
+  fileChange: "修改文件",
+  mcpToolCall: "调用 MCP 工具",
+  webSearch: "搜索网络",
+  imageGeneration: "生成图片",
+};
+
+/** Names a Codex step by what it did — the command, the query, the tool — so ten steps don't all read "执行命令". */
+export function codexActivityLabel(item: Record<string, unknown>, type: string): string {
+  return codexActivity(item, type).label;
+}
+
+/** A Codex item as a step: its kind, a short name, and what to show when it is opened. */
+export function codexActivity(item: Record<string, unknown>, type: string): Omit<ChatActivity, "id" | "status"> {
+  const text = (key: string) => typeof item[key] === "string" ? (item[key] as string).trim() : "";
+  if (text("title")) return { label: text("title") };
+  if (type === "commandExecution" && text("command")) {
+    const command = shellCommand(text("command"));
+    const output = typeof item.aggregatedOutput === "string" ? tail(item.aggregatedOutput.trimEnd(), 4_000) : "";
+    const exit = typeof item.exitCode === "number" && item.exitCode !== 0 ? `\n退出码 ${item.exitCode}` : "";
+    const detail = `$ ${command}${output ? `\n${output}` : ""}${exit}`;
+    const actions = exploreActions(item.commandActions);
+    return actions ? { kind: "explore", label: actions.map(describeExplore).join("，"), actions, detail } : { kind: "command", label: command, detail };
+  }
+  if (type === "fileChange") {
+    const changes = (Array.isArray(item.changes) ? item.changes : []).map(record).filter((c): c is Record<string, unknown> => Boolean(c));
+    const diffs = changes.map((change) => typeof change.diff === "string" ? change.diff : "");
+    const counted = diffs.map(diffStat);
+    const names = changes.map((change) => typeof change.path === "string" ? change.path.split(/[\\/]/).pop()! : "").filter(Boolean);
+    return {
+      kind: "edit", label: names.length > 2 ? `${names.slice(0, 2).join("、")} 等 ${names.length} 个文件` : names.join("、") || CODEX_LABELS.fileChange!,
+      added: counted.reduce((sum, c) => sum + c.added, 0), removed: counted.reduce((sum, c) => sum + c.removed, 0),
+      detail: tail(diffs.filter(Boolean).join("\n"), 8_000) || undefined,
+    };
+  }
+  if (type === "webSearch") {
+    const action = record(item.action);
+    const url = typeof action?.url === "string" ? action.url : "";
+    const label = text("query") || url || CODEX_LABELS.webSearch!;
+    return { kind: "search", label };
+  }
+  if (type === "mcpToolCall" && text("tool")) {
+    const error = stringAt(item, "error", "message");
+    return { kind: "tool", label: [text("server"), text("tool")].filter(Boolean).join(" · "), detail: error || undefined };
+  }
+  if (type === "imageGeneration") return { kind: "image", label: CODEX_LABELS.imageGeneration! };
+  return { label: CODEX_LABELS[type] ?? type };
+}
+
+/** Read, search and list actions of a command made only of those; null when it does anything else. */
+function exploreActions(value: unknown): ExploreAction[] | null {
+  const actions = (Array.isArray(value) ? value : []).map(record);
+  if (!actions.length) return null;
+  const mapped: ExploreAction[] = [];
+  for (const action of actions) {
+    const at = (key: string) => typeof action?.[key] === "string" ? (action[key] as string) : "";
+    if (action?.type === "read") mapped.push({ type: "read", target: at("name") || at("path").split(/[\\/]/).pop() || "" });
+    else if (action?.type === "search") mapped.push({ type: "search", target: at("query") || at("path") });
+    else if (action?.type === "listFiles") mapped.push({ type: "list", target: at("path") || "." });
+    else return null;
+  }
+  return mapped;
+}
+
+const describeExplore = (action: ExploreAction) =>
+  `${{ read: "读取", search: "搜索", list: "列出" }[action.type]} ${action.target}`.trim();
+
+/** Added and removed lines of a unified diff, headers excluded. */
+export function diffStat(diff: string): { added: number; removed: number } {
+  let added = 0; let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) added++;
+    else if (line.startsWith("-")) removed++;
+  }
+  return { added, removed };
+}
+
+const tail = (text: string, limit: number) => text.length > limit ? `…${text.slice(-limit)}` : text;
+
+/** The bold heading a reasoning summary opens with (`**Checking files**`), once it is complete. */
+export function reasoningHeading(summary: string): string {
+  const bold = /^\s*\*\*([^*\n]+)\*\*/.exec(summary);
+  return bold ? bold[1]!.trim() : "";
+}
+
+function codexPlan(params: unknown): ChatPlan | null {
+  const steps = arrayAt(params, "plan").map(record).flatMap((step) => {
+    const text = typeof step?.step === "string" ? step.step.trim() : "";
+    const status = step?.status === "completed" || step?.status === "inProgress" ? step.status : "pending";
+    return text ? [{ step: text, status } as ChatPlan["steps"][number]] : [];
+  });
+  if (!steps.length) return null;
+  const explanation = stringAt(params, "explanation");
+  return { steps, ...(explanation ? { explanation } : {}) };
+}
+
+/** The command a user would recognise: the script inside `zsh -lc '…'`, on one line. */
+function shellCommand(command: string): string {
+  const wrapped = /^(?:\S*\/)?(?:ba|z)?sh\s+-l?c\s+(?:(['"])([\s\S]*)\1|([^'"\s][\s\S]*))$/.exec(command);
+  const inner = !wrapped ? command : wrapped[3] ?? wrapped[2]!.replace(wrapped[1] === "'" ? /'\\''/g : /\\"/g, wrapped[1]!);
+  return inner.replace(/\s+/g, " ").trim();
 }

@@ -15,7 +15,8 @@ The chat sidebar should feel like a focused part of Obsidian, not an embedded we
 - Desktop-native transports are preferred: Codex App Server and ACP where supported. Model APIs remain the mobile fallback.
 - On desktop, API chats may read a user-supplied public HTTP/HTTPS page, Markdown/text/JSON, or RSS/Atom/XML feed through a bounded, read-only tool. Internal `obsidian://` links are not public web pages; reading context passed by Qiaomu RSS/Reader supplies the article body. A failed read reports its specific cause.
 - Markdown is rendered through Obsidian's renderer so GFM-like tables, code, internal links, and Mermaid follow the host application.
-- Tool activity is grouped into one expandable execution summary per response. Failures initially expand; user expansion choices survive streaming updates.
+- A reply shows its work in the order it happened, the way the Codex app does: text runs, one-line steps named by verb and target (`已运行 npm test`, `已编辑 a.md +2 −1`, `已搜索 …`), the plan as a checklist, and questions for the user. Consecutive read-only commands fold into one `已探索 N 个文件，M 次搜索` row. Opening a step shows its command output or diff.
+- While the agent works, the step in progress and the reasoning heading breathe quietly (opacity, no gradient) in the transcript; no status line sits above the composer. Once the reply finishes, its work folds into `已处理 <用时>` and only the final answer stays in view. Failures show a red icon on their row and never force the list open.
 - User messages show a quiet timestamp with copy and edit actions. Editing happens in place; resubmitting truncates the later branch, resets the Agent session and regenerates from the edited message.
 - File changes require an explicit access choice. A dedicated shield control offers read-only, current-vault write, and desktop-only full filesystem access; no `仅建议` label is permanently shown in the composer.
 
@@ -177,3 +178,7 @@ The chat sidebar should feel like a focused part of Obsidian, not an embedded we
 - With no model source, the first screen offers one neutral ink button, 连接模型, instead of prompts.
 - The shortcut strip appears only once a conversation has started, so the first screen does not repeat itself. Keyboard hints (`/`, `@`, ⇧↵) appear on desktop only.
 - Touch: no tap highlight, and a pressed background replaces hover. Prompt and menu rows are at least 44 px tall. The strip scrolls without a scrollbar, and the textarea is capped at 28dvh so the keyboard leaves room for the conversation. Running states pulse a 6 px dot, which stops under reduced motion.
+
+## 对话配色
+
+外观设置沿用 RSS 的明亮、宣纸、竹青、雾蓝、深海、墨黑，默认跟随 Obsidian。仅覆盖对话面板和设置预览中的语义色，保留宿主设置与弹窗主题。切换只修改面板属性，不重建对话或触发模型连接。代码高亮、错误与修改记录提示分别适配浅深色；Mermaid 跟随面板明暗。
