@@ -5,6 +5,7 @@ import { Chat } from "@ai-sdk/react";
 import { ChatPanel } from "../src/ui/chat-panel";
 import { AgentTransport, messageText, type AgentMessage } from "../src/services/chat-transport";
 import { Platform, type App, type Component } from "obsidian";
+import { normalizePromptSettings, promptCatalog } from "../src/services/prompt-library";
 import type { ComponentProps, ReactNode } from "react";
 vi.mock("obsidian", () => ({
   Component: class {}, Notice: class {}, Modal: class {}, MarkdownView: class {}, Menu: class {}, Setting: class {}, TFile: class {}, requestUrl: vi.fn(),
@@ -23,11 +24,12 @@ function setup() {
   const props: ComponentProps<typeof ChatPanel> = {
     chat, app: {} as App, parent: { addChild() {}, removeChild() {} } as unknown as Component,
     conversationId: "test", conversationTitle: "", branch: null, onOpenParent: vi.fn(), onForkMessage: vi.fn(), imageTargetNote: null,
-    backendLabel: "Mock", skillLabel: "技能", permission: "plan", fileAccessAvailable: true, fullAccessAvailable: true, note: null, statusText: "", prompts: ["总结"], prefill: "", prefillVersion: 0,
+    backendLabel: "Mock", skillLabel: "技能", permission: "plan", fileAccessAvailable: true, fullAccessAvailable: true, note: null, statusText: "", prefill: "", prefillVersion: 0,
     sources: [{ key: "api:mock", kind: "api", label: "Mock 服务商", models: [{ id: "mock", name: "Mock model", efforts: ["low", "high"] }, { id: "other", name: "Other model", efforts: [] }], loaded: true }],
     selection: { source: "api:mock", model: "mock" }, recentModels: [], onPickModel: vi.fn(), onLoadModels: vi.fn(), onManageModels: vi.fn(),
     onConnection: vi.fn(), onNew: vi.fn(), onOpenSettings: vi.fn(), onHistory: vi.fn(), onSkill: vi.fn(), onPermission: vi.fn(), onEditMessage: vi.fn(), onToggleNote: vi.fn(), onPersist: async () => {}, onApprove: vi.fn(), onRevertChanges: vi.fn(), onOpenFile: vi.fn(), editorSelection: null, onDismissSelection: vi.fn(), onComposerFocus: vi.fn(),
-    efforts: ["low", "high"], effort: "high", modelLoading: false, onEffort: vi.fn(), customPrompts: [{ id: "p", name: "测试模板", body: "自定义内容" }], onManagePrompts: vi.fn(), onPickFile: vi.fn(), onPickFolder: vi.fn(), onValidateAttachments: vi.fn(), onAppend: vi.fn(),
+    efforts: ["low", "high"], effort: "high", modelLoading: false, onEffort: vi.fn(), promptCatalog: promptCatalog([{ id: "p", title: "测试模板", body: "自定义内容", source: "user", path: "Qiaomu Agent/Prompts/测试模板.md" }]),
+    promptSettings: normalizePromptSettings({}), onManagePrompts: vi.fn(), onPromptUsed: vi.fn(), onEditPrompt: vi.fn(), onTogglePromptPin: vi.fn(), onPickFile: vi.fn(), onPickFolder: vi.fn(), onValidateAttachments: vi.fn(), onAppend: vi.fn(),
   };
   const result = render(<ChatPanel {...props} />);
   return { ...result, props, send, chat, input: screen.getByLabelText("给 Agent 的消息") };
@@ -41,33 +43,52 @@ it("mobile Enter does not submit; the send button still works", async () => {
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(send).toHaveBeenCalledOnce());
 });
-it("slash Enter inserts a template, Escape preserves draft, and IME Enter does not send", async () => {
-  const { input, send } = setup();
+it("slash Enter runs a prompt, Shift+Enter inserts it, Escape preserves the draft, and IME Enter does not send", async () => {
+  const { input, send, props, container } = setup();
   fireEvent.change(input, { target: { value: "/测试" } });
-  fireEvent.keyDown(input, { key: "Enter" }); expect((input as HTMLTextAreaElement).value).toBe("自定义内容"); expect(send).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe("自定义内容"));
+  expect(send).not.toHaveBeenCalled();
   fireEvent.change(input, { target: { value: "/" } }); fireEvent.keyDown(input, { key: "Escape" }); expect(screen.queryByRole("listbox")).toBeNull(); expect((input as HTMLTextAreaElement).value).toBe("/");
   fireEvent.compositionStart(input); fireEvent.keyDown(input, { key: "Enter", isComposing: true }); expect(send).not.toHaveBeenCalled(); fireEvent.compositionEnd(input);
+  fireEvent.change(input, { target: { value: "/测试" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  expect(send.mock.calls[0]![0].prompt).toBe("自定义内容");
+  expect(props.onPromptUsed).toHaveBeenCalledWith("p");
+  // The transcript names the prompt and folds its full text away.
+  expect(container.querySelector(".qa-sent-prompt-title")!.textContent).toBe("测试模板");
 });
-it("the empty conversation offers prompts for what is on screen, and the strip returns once it starts", async () => {
+it("the empty conversation offers prompts for what is on screen, runs them in one click, and asks for blanks first", async () => {
   const { input, props, rerender, send, chat } = setup();
   expect(screen.getByRole("heading", { name: "从一个想法开始" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "管理 Prompt 库" })).toBeNull();
-  fireEvent.change(input, { target: { value: "已有问题" } });
-  fireEvent.click(screen.getByRole("button", { name: "在库里找笔记…" }));
-  expect((input as HTMLTextAreaElement).value).toMatch(/^已有问题\n\n在我的库里找/);
-  expect(send).not.toHaveBeenCalled();
-  rerender(<ChatPanel {...props} customPrompts={[{ id: "p", name: "周报", body: "写周报", pinned: true }]} editorSelection={{ label: "选中 2 行 · 草稿", detail: "x" }} />);
+  expect(screen.queryByRole("button", { name: "全部 Prompt" })).toBeNull();
+  const pinned = normalizePromptSettings({ pinned: ["p"] });
+  rerender(<ChatPanel {...props} promptSettings={pinned} editorSelection={{ label: "选中 2 行 · 草稿", detail: "x" }} />);
   expect(screen.getByRole("heading", { name: "针对选中的文字" })).toBeTruthy();
   const offered = screen.getByRole("group", { name: "可以这样开始" }).querySelectorAll("button");
-  expect([...offered].map((b) => b.textContent)).toEqual(["周报", "润色这段", "讲明白这段", "压缩到一半"]);
+  expect([...offered].map((b) => b.textContent)).toEqual(["测试模板", "润色这段", "讲明白这段", "压缩到一半"]);
   rerender(<ChatPanel {...props} />);
-  fireEvent.change(input, { target: { value: "开始" } });
-  fireEvent.submit(input.closest("form")!);
+  // Typed text fills the blank; Enter sends without touching the composer again.
+  fireEvent.change(input, { target: { value: "Obsidian 插件" } });
+  fireEvent.click(screen.getByRole("button", { name: "在库里找笔记…" }));
+  const blank = await screen.findByLabelText("主题");
+  expect((blank as HTMLTextAreaElement).value).toBe("Obsidian 插件");
+  fireEvent.keyDown(blank, { key: "Enter" });
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  expect(send.mock.calls[0]![0].prompt).toMatch(/^在我的库里找和「Obsidian 插件」有关的笔记/);
   await waitFor(() => expect(chat.status).toBe("ready"));
-  fireEvent.change(input, { target: { value: "已有问题" } });
-  fireEvent.click(screen.getByRole("button", { name: "总结" }));
-  expect((input as HTMLTextAreaElement).value).toBe("已有问题\n\n总结");
-  expect(props.onManagePrompts).not.toHaveBeenCalled();
+  expect((input as HTMLTextAreaElement).value).toBe("");
+  // Once the conversation runs, the strip sends pinned prompts with what is typed alongside.
+  rerender(<ChatPanel {...props} promptSettings={pinned} />);
+  fireEvent.change(input, { target: { value: "补充一句" } });
+  fireEvent.click(screen.getByRole("button", { name: "测试模板" }));
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+  expect(send.mock.calls[1]![0].prompt).toBe("自定义内容\n\n补充一句");
+  await waitFor(() => expect(chat.status).toBe("ready"));
+  fireEvent.click(screen.getByRole("button", { name: "全部 Prompt" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "搜索 Prompt" }), { target: { value: "周回顾" } });
+  expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["做一次周回顾"]);
   fireEvent.click(screen.getByRole("button", { name: "管理 Prompt 库" }));
   expect(props.onManagePrompts).toHaveBeenCalledOnce();
 });
@@ -78,15 +99,15 @@ it("without any model the empty conversation leads to connecting one", () => {
   expect(props.onManageModels).toHaveBeenCalledOnce();
   expect(screen.queryByRole("group", { name: "可以这样开始" })).toBeNull();
 });
-it("the Prompt menu groups own prompts before the built-in library and searches all of it", () => {
+it("the Prompt menu puts fitting and own prompts first and searches every enabled one", async () => {
   const { input } = setup();
   fireEvent.change(input, { target: { value: "/" } });
   const menu = screen.getByRole("listbox", { name: "Prompt 菜单" });
-  expect([...menu.querySelectorAll(".qa-command-group")].map((g) => g.textContent)).toEqual(["我的 Prompt", "随时可用"]);
+  expect([...menu.querySelectorAll(".qa-command-group")].map((g) => g.textContent).slice(0, 2)).toEqual(["适合现在", "我的"]);
   fireEvent.change(input, { target: { value: "/润色" } });
-  expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["润色这段", "管理自定义 Prompt…"]);
-  fireEvent.keyDown(input, { key: "Enter" });
-  expect((input as HTMLTextAreaElement).value).toMatch(/^润色选中的文字/);
+  expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["润色这段", "管理 Prompt 库…"]);
+  fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect((input as HTMLTextAreaElement).value).toMatch(/^润色选中的文字/));
 });
 it("save current draft opens Prompt editor and leaves the draft untouched", () => {
   const { input, props } = setup();

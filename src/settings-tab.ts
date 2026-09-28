@@ -7,6 +7,8 @@ import { applyChatTheme, CHAT_THEMES, normalizeChatTheme } from "./services/pale
 import { availableFonts, chatFontStack, cleanFamily, codeFontStack, type FontChoice } from "./services/fonts";
 import { listMcpServers } from "./services/mcp-config";
 import { DEFAULT_SYSTEM_PROMPT } from "./defaults";
+import { cleanFolder, DEFAULT_PROMPT_FOLDER } from "./services/prompt-library";
+import { PromptLibraryPanel } from "./ui/prompt-library-panel";
 import { FullAccessDialog } from "./ui/host-dialogs";
 import { actionButton, iconAction, labelField, navRow, sectionHead, switchRow, wideField } from "./ui/settings-kit";
 import type { PermissionMode } from "./types";
@@ -64,7 +66,8 @@ export class ModelManagerModal extends Modal {
 }
 
 export class QiaomuSettingTab extends PluginSettingTab {
-  private activeSection: "models" | "chat" | "tools" | "about" = "models";
+  private activeSection: "models" | "chat" | "prompts" | "tools" | "about" = "models";
+  private promptPanel: PromptLibraryPanel | null = null;
   private readonly providers: ProviderSettings;
   constructor(app: App, private readonly plugin: QiaomuAgentPlugin, private readonly connectionsOnly = false) {
     super(app, plugin);
@@ -73,6 +76,7 @@ export class QiaomuSettingTab extends PluginSettingTab {
 
   override display(): void {
     const { containerEl } = this;
+    this.promptPanel?.destroy(); this.promptPanel = null;
     containerEl.empty();
     containerEl.addClass("qiaomu-agent-settings");
     if (this.connectionsOnly) {
@@ -85,7 +89,7 @@ export class QiaomuSettingTab extends PluginSettingTab {
     new Setting(identity).setName("乔木 Agent").setHeading();
     const tabs = header.createDiv({ cls: "qiaomu-agent-settings__tabs" });
     tabs.setAttribute("role", "tablist");
-    const sections = [{ id: "models", label: "模型" }, { id: "chat", label: "对话" }, { id: "tools", label: "工具" }, { id: "about", label: "关于" }] as const;
+    const sections = [{ id: "models", label: "模型" }, { id: "chat", label: "对话" }, { id: "prompts", label: "Prompt" }, { id: "tools", label: "工具" }, { id: "about", label: "关于" }] as const;
     for (const [index, section] of sections.entries()) {
       const selected = this.activeSection === section.id;
       const button = tabs.createEl("button", { text: section.label, cls: "qiaomu-agent-settings__tab" });
@@ -104,8 +108,30 @@ export class QiaomuSettingTab extends PluginSettingTab {
     body.setAttribute("role", "tabpanel");
     if (this.activeSection === "models") this.renderConnectionSection(body);
     if (this.activeSection === "chat") this.renderBehaviorSection(body);
+    if (this.activeSection === "prompts") this.renderPromptSection(body);
     if (this.activeSection === "tools") this.renderToolsSection(body);
     if (this.activeSection === "about") this.renderAboutSection(body);
+  }
+
+  override hide(): void { this.promptPanel?.destroy(); this.promptPanel = null; super.hide(); }
+
+  private renderPromptSection(containerEl: HTMLElement): void {
+    this.promptPanel = new PromptLibraryPanel(this.plugin.promptHost(), containerEl.createDiv({ cls: "qa-ms-section" }));
+    this.promptPanel.render();
+    const place = containerEl.createDiv({ cls: "qa-ms-section" });
+    const list = place.createDiv({ cls: "qa-ms-list qa-ms-settings" });
+    new Setting(list).setName("保存位置").setDesc("你自己写的和改过的 Prompt 放在这个文件夹，每条一个 Markdown 文件。改位置不会移动已有文件。")
+      .addText((text) => {
+        text.setPlaceholder(DEFAULT_PROMPT_FOLDER).setValue(this.plugin.settings.prompts.folder);
+        text.inputEl.addEventListener("change", async () => {
+          const folder = cleanFolder(text.getValue()) || DEFAULT_PROMPT_FOLDER;
+          text.setValue(folder);
+          if (folder === this.plugin.settings.prompts.folder) return;
+          this.plugin.settings.prompts.folder = folder;
+          await this.plugin.savePromptSettings();
+          await this.plugin.promptStore.load();
+        });
+      });
   }
 
   private renderAboutSection(containerEl: HTMLElement): void {
@@ -331,7 +357,7 @@ export class QiaomuSettingTab extends PluginSettingTab {
     const settings = this.plugin.settings;
     const advanced = section.createEl("details", { cls: "qiaomu-agent-settings__advanced-settings" });
     const summary = advanced.createEl("summary", { cls: "qa-disclosure" });
-    summary.createSpan({ text: "系统 Prompt 与快捷提问" });
+    summary.createSpan({ text: "系统 Prompt" });
     setIcon(summary.createSpan({ cls: "qa-disclosure-chevron", attr: { "aria-hidden": "true" } }), "chevron-right");
     const body = advanced.createDiv({ cls: "qa-ms-list qa-ms-wide-list" });
 
@@ -348,30 +374,6 @@ export class QiaomuSettingTab extends PluginSettingTab {
       textarea.value = settings.systemPrompt = DEFAULT_SYSTEM_PROMPT; reset.hide(); await this.plugin.saveSettings();
     });
 
-    const quick = wideField(body, "快捷提问", "新对话空白页显示前 3 条，输入 / 可选用全部。最多 8 条。");
-    const rows = quick.createDiv({ cls: "qa-quick-prompts" });
-    const items = [...settings.quickPrompts];
-    const persist = async () => { settings.quickPrompts = items.map((item) => item.trim()).filter(Boolean).slice(0, 8); await this.plugin.saveSettings(); };
-    const renderRows = (focusIndex?: number) => {
-      rows.empty();
-      items.forEach((value, index) => {
-        const row = rows.createDiv({ cls: "qa-quick-prompt" });
-        const name = row.createEl("label", { cls: "qiaomu-agent__sr-only", text: `快捷提问 ${index + 1}` });
-        const input = row.createEl("input", { type: "text", cls: "qa-ms-input", attr: { placeholder: "例如 总结当前笔记" } });
-        input.id = `qa-quick-prompt-${crypto.randomUUID()}`;
-        name.htmlFor = input.id;
-        input.value = value;
-        input.addEventListener("input", () => { items[index] = input.value; void persist(); });
-        input.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter" || event.isComposing || items.length >= 8) return;
-          event.preventDefault(); items.splice(index + 1, 0, ""); renderRows(index + 1);
-        });
-        iconAction(row, "x", `删除快捷提问 ${index + 1}`).addEventListener("click", () => { items.splice(index, 1); void persist(); renderRows(); });
-        if (index === focusIndex) window.setTimeout(() => input.focus());
-      });
-      if (items.length < 8) actionButton(rows, "plus", "添加").addEventListener("click", () => { items.push(""); renderRows(items.length - 1); });
-    };
-    renderRows();
   }
 
 }

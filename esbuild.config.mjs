@@ -13,6 +13,8 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: production ? false : "inline",
   minify: production,
+  // Chinese UI text and the bundled prompt library stay readable UTF-8 instead of \uXXXX escapes (half the bytes).
+  charset: "utf8",
   define: { "process.env.NODE_ENV": JSON.stringify(production ? "production" : "development") },
   outfile: "main.js",
   plugins: [{ name: "host-css", setup(build) {

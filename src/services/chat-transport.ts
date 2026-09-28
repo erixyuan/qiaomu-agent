@@ -3,7 +3,7 @@ import type { ApprovalRequest, ApprovalState, ChatActivity, ChatAttachment, Chat
 import { storableQuestion } from "./user-questions";
 
 export type AgentMessage = UIMessage<
-  { createdAt: number; finishedAt?: number; backend?: string; sourcePath?: string; attachments?: import("../types").ChatAttachment[] },
+  { createdAt: number; finishedAt?: number; backend?: string; sourcePath?: string; attachments?: import("../types").ChatAttachment[]; prompt?: import("../types").SentPrompt },
   { activity: ChatActivity; plan: ChatPlan; status: string; attachment: ChatAttachment; changes: TurnChanges; approval: ApprovalState; question: QuestionState; usage: ContextUsage }
 >;
 
@@ -98,6 +98,7 @@ export function toStoredMessage(message: AgentMessage): ChatMessage {
     })(),
     plan: (() => { const part = message.parts.find((p) => p.type === "data-plan"); return part?.type === "data-plan" ? part.data : undefined; })(),
     finishedAt: message.metadata?.finishedAt,
+    prompt: message.metadata?.prompt,
     changes: (() => { const part = message.parts.find((p) => p.type === "data-changes"); return part && part.type === "data-changes" ? storableChanges(part.data) : undefined; })(),
     usage: messageUsage(message),
   };
@@ -106,7 +107,7 @@ export function fromStoredMessage(message: ChatMessage, resolveAttachment: (atta
   const attachments = (message.attachments ?? []).map(resolveAttachment);
   return {
     id: message.id, role: message.role === "status" ? "system" : message.role,
-    metadata: { createdAt: message.createdAt, finishedAt: message.finishedAt, backend: message.backend, sourcePath: message.sourcePath, attachments },
+    metadata: { createdAt: message.createdAt, finishedAt: message.finishedAt, ...(message.prompt ? { prompt: message.prompt } : {}), backend: message.backend, sourcePath: message.sourcePath, attachments },
     parts: [ ...timelineParts(message),
       ...(message.changes?.files.length ? [{ type: "data-changes" as const, id: "changes", data: message.changes }] : []),
       ...(message.usage ? [{ type: "data-usage" as const, id: "usage", data: message.usage }] : []),

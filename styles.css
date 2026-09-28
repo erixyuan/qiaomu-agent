@@ -283,11 +283,51 @@
 .qiaomu-agent--react .qa-working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
 .qiaomu-agent--react .qa-scroll-bottom { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--background-primary); border: 1px solid var(--background-modifier-border); }
 .qiaomu-agent--react .qa-composer { padding: 8px 12px 14px; position: relative; }
-.qiaomu-agent--react .qa-prompt-strip { display: flex; align-items: center; gap: 6px; overflow-x: auto; margin-bottom: 8px; scrollbar-width: thin; }
-.qiaomu-agent--react .qa-prompt-strip button { flex: none; min-height: 30px; max-width: 170px; overflow: hidden; padding: 4px 10px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; box-shadow: none; }
-.qiaomu-agent--react .qa-prompt-strip button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.qiaomu-agent--react .qa-prompt-strip button:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
-.qiaomu-agent--react .qa-prompt-strip .qa-prompt-strip-manage { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
+.qiaomu-agent--react .qa-prompt-strip { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.qiaomu-agent--react .qa-prompt-chips { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.qiaomu-agent--react .qa-prompt-chips button { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 30px; max-width: 170px; padding: 4px 10px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); font-size: 12px; white-space: nowrap; box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-chips button > span { overflow: hidden; text-overflow: ellipsis; }
+.qiaomu-agent--react .qa-prompt-chips button.is-pinned { color: var(--text-normal); }
+.qiaomu-agent--react .qa-prompt-chips button > svg { flex: none; color: var(--text-faint); }
+.qiaomu-agent--react .qa-prompt-chips button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-chips button:focus-visible, .qiaomu-agent--react .qa-prompt-more .qa-control-trigger:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
+.qiaomu-agent--react .qa-prompt-chips button:disabled { opacity: .5; }
+.qiaomu-agent--react .qa-prompt-more .qa-control-trigger { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-height: 30px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-more .qa-control-trigger:hover, .qiaomu-agent--react .qa-prompt-more .qa-control-trigger[aria-expanded="true"] { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-more .qa-control-popover { bottom: calc(100% - 4px); left: 12px; right: 12px; width: auto; max-height: min(420px, 60dvh); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.qiaomu-agent--react .qa-prompt-picker { display: flex; flex-direction: column; min-height: 0; }
+.qiaomu-agent--react .qa-prompt-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--background-modifier-border); color: var(--text-muted); }
+.qiaomu-agent--react .qa-prompt-search input { flex: 1; min-width: 0; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.qiaomu-agent--react .qa-prompt-search input:focus { box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-search:focus-within { color: var(--text-normal); }
+.qiaomu-agent--react .qa-prompt-list { flex: 1; min-height: 0; max-height: min(320px, 45dvh); overflow: auto; overscroll-behavior: contain; padding: 4px 6px 6px; }
+.qiaomu-agent--react .qa-prompt-list button { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 34px; padding: 6px 8px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--text-normal); font-size: 13px; text-align: left; }
+.qiaomu-agent--react .qa-prompt-list button[aria-selected="true"] { background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-list button > svg { flex: none; margin-left: auto; color: var(--text-faint); }
+.qiaomu-agent--react .qa-prompt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qiaomu-agent--react .qa-prompt-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--background-modifier-border); color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-picker-foot button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-prompt-picker-foot button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-command-hint { padding: 6px 8px 2px; color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-form { margin-bottom: 8px; padding: 10px 12px 12px; border: 1px solid var(--background-modifier-border); border-radius: 14px; background: var(--background-secondary); }
+.qiaomu-agent--react .qa-prompt-form-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.qiaomu-agent--react .qa-prompt-form-head button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); }
+.qiaomu-agent--react .qa-prompt-field { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.qiaomu-agent--react .qa-prompt-field label { color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-prompt-field textarea, .qiaomu-agent--react .qa-prompt-field select { width: 100%; min-height: 34px; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 9px; background: var(--background-primary); font-size: 13px; line-height: 1.5; resize: none; }
+.qiaomu-agent--react .qa-prompt-field textarea:focus-visible, .qiaomu-agent--react .qa-prompt-field select:focus-visible { border-color: var(--text-muted); box-shadow: none; outline: none; }
+.qiaomu-agent--react .qa-prompt-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send { flex: none; min-height: 30px; padding: 4px 14px; border: 0; border-radius: 9px; background: var(--text-normal); box-shadow: none; color: var(--background-primary); font-weight: 500; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send:hover { opacity: .88; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send:focus-visible { outline: 2px solid var(--text-normal); outline-offset: 2px; }
+.qiaomu-agent--react .qa-prompt-form-actions > span, .qiaomu-agent--react .qa-prompt-picker-foot > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qiaomu-agent--react .qa-prompt-picker-foot button { flex: none; }
+.qiaomu-agent--react .qa-sent-prompt-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.qiaomu-agent--react .qa-sent-prompt-title svg { color: var(--text-muted); }
+.qiaomu-agent--react .qa-sent-prompt-extra { margin: 6px 0 0; white-space: pre-wrap; }
+.qiaomu-agent--react .qa-sent-prompt details { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-sent-prompt summary { cursor: pointer; }
+.qiaomu-agent--react .qa-sent-prompt-body { max-height: 240px; margin-top: 6px; overflow: auto; white-space: pre-wrap; }
 .qiaomu-agent--react .qa-command-group { padding: 10px 8px 4px; color: var(--text-faint); font-size: 11px; font-weight: 500; }
 .qiaomu-agent--react .qa-command-group:first-child { padding-top: 4px; }
 .qiaomu-agent--react .qa-command-empty { padding: 9px; color: var(--text-muted); font-size: 13px; }
@@ -468,9 +508,9 @@
 /* Touch: no grey flash, a pressed state instead of hover, room for the thumb. */
 @media (pointer: coarse) {
   .qiaomu-agent--react button { -webkit-tap-highlight-color: transparent; }
-  .qiaomu-agent--react :is(.qa-suggestions button, .qa-command-menu button, .qa-prompt-strip button, .qa-message-actions button, .qa-header button, .qa-add-menu button):active { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
-  .qiaomu-agent--react .qa-prompt-strip { scrollbar-width: none; }
-  .qiaomu-agent--react .qa-prompt-strip::-webkit-scrollbar { display: none; }
+  .qiaomu-agent--react :is(.qa-suggestions button, .qa-command-menu button, .qa-prompt-chips button, .qa-prompt-list button, .qa-message-actions button, .qa-header button, .qa-add-menu button):active { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
+  .qiaomu-agent--react .qa-prompt-chips { scrollbar-width: none; }
+  .qiaomu-agent--react .qa-prompt-chips::-webkit-scrollbar { display: none; }
 }
 .is-mobile .qiaomu-agent--react .qa-empty { padding-top: 8px; }
 .is-mobile .qiaomu-agent--react .qa-suggestions button { min-height: 46px; padding-block: 11px; font-size: 15px; }
@@ -541,7 +581,7 @@
 
 /* Model settings tokens: neutral Vercel-like grays scoped to the plugin. */
 .qa-models { display: flex; flex-direction: column; }
-.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-model-manager-modal, .qa-capabilities-modal {
+.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-model-manager-modal, .qa-capabilities-modal, .qa-prompt-library-modal {
   --qa-ink: #171717;
   --qa-muted: #666;
   --qa-line: #e5e5e5;
@@ -549,7 +589,7 @@
   --qa-soft: #fafafa;
   --qa-focus: #171717;
 }
-.theme-dark .qiaomu-agent-settings, .theme-dark .qa-provider-modal, .theme-dark .qa-provider-chooser-modal, .theme-dark .qa-model-manager-modal, .theme-dark .qa-capabilities-modal {
+.theme-dark .qiaomu-agent-settings, .theme-dark .qa-provider-modal, .theme-dark .qa-provider-chooser-modal, .theme-dark .qa-model-manager-modal, .theme-dark .qa-capabilities-modal, .theme-dark .qa-prompt-library-modal {
   --qa-ink: #ededed;
   --qa-muted: #a1a1a1;
   --qa-line: #333;
@@ -655,7 +695,9 @@
   .qiaomu-agent-settings__header { padding: 4px 0 0; }
   .qiaomu-agent-settings__header .qiaomu-agent-settings__tabs { gap: 18px; }
   .qiaomu-agent-settings__body { margin-top: 18px; gap: 14px; }
-  .qa-model-manager-modal { width: calc(100vw - 16px); max-height: 94dvh; }
+  .qa-model-manager-modal, .qa-prompt-library-modal { width: calc(100vw - 16px); max-height: 94dvh; }
+  .qa-prompt-meta-fields { grid-template-columns: 1fr; }
+  .qa-prompt-meta-fields > .qa-ms-wide + .qa-ms-wide { border-left: 0; border-top: 1px solid var(--qa-line); }
   .qa-provider-modal { width: calc(100vw - 16px); max-height: 94dvh; }
   .qa-models button, .qa-provider-modal button { min-height: 44px; }
 }
@@ -713,8 +755,8 @@ details[open] > .qa-disclosure .qa-disclosure-chevron { transform: rotate(90deg)
 :is(.qa-models, .qa-provider-modal) button.qa-ms-button.is-primary:hover { border-color: var(--qa-ink); background: var(--qa-ink); opacity: .88; }
 .qa-models button.qa-ms-button.is-quiet, .qa-provider-modal button.qa-ms-button.is-quiet { align-self: flex-start; border-color: transparent; background: transparent; color: var(--qa-muted); padding: 0 6px; }
 .qa-models button.qa-ms-button.is-quiet:hover, .qa-provider-modal button.qa-ms-button.is-quiet:hover { border-color: transparent; background: var(--qa-soft); color: var(--qa-ink); }
-.qa-provider-modal button.qa-ms-button.is-danger { border-color: transparent; background: transparent; color: var(--text-error); }
-.qa-provider-modal button.qa-ms-button.is-danger:hover { border-color: transparent; background: color-mix(in srgb, var(--text-error) 8%, transparent); }
+:is(.qa-models, .qa-provider-modal) button.qa-ms-button.is-danger { border-color: transparent; background: transparent; color: var(--text-error); }
+:is(.qa-models, .qa-provider-modal) button.qa-ms-button.is-danger:hover { border-color: transparent; background: color-mix(in srgb, var(--text-error) 8%, transparent); }
 :is(.qa-models, .qa-provider-modal) button.qa-ms-button.is-danger-strong, :is(.qa-models, .qa-provider-modal) button.qa-ms-button.is-danger-strong:hover { border-color: var(--text-error); background: var(--text-error); color: #fff; }
 .qa-ms-button-icon { display: inline-flex; color: var(--qa-muted); }
 .qa-ms-button-icon svg { width: 14px; height: 14px; }
@@ -877,6 +919,46 @@ details[open] > .qa-disclosure .qa-disclosure-chevron { transform: rotate(90deg)
   .qa-cap-toolbar { flex-wrap: wrap; }
   .qa-models .qa-ms-row-main.is-static, .qa-cap-row { min-height: 56px; }
 }
+
+/* Prompt library: settings tab and the modal opened from the chat. */
+.qa-prompt-library-modal { width: min(760px, calc(100vw - 32px)); max-height: min(90dvh, 960px); }
+.qa-prompt-library-modal .modal-content { overflow-y: auto; }
+.qa-prompt-library { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.qa-prompt-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.qa-prompt-tabs::-webkit-scrollbar { display: none; }
+.qa-models button.qa-prompt-tab { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; box-shadow: none; color: var(--qa-muted); font-size: 13px; }
+.qa-models button.qa-prompt-tab:hover { color: var(--qa-ink); background: var(--qa-soft); }
+.qa-models button.qa-prompt-tab.is-active { border-color: var(--qa-line); background: var(--qa-soft); color: var(--qa-ink); font-weight: 600; }
+.qa-models button.qa-prompt-tab:focus-visible { outline: 2px solid var(--qa-focus); outline-offset: -2px; }
+.qa-prompt-tab-count { color: var(--qa-muted); font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.qa-prompt-tools { display: flex; gap: 8px; }
+.qa-prompt-tools input { flex: 1; min-width: 0; }
+.qa-prompt-tools select { flex: none; max-width: 40%; }
+.qa-prompt-rows { max-height: min(56dvh, 560px); overflow-y: auto; }
+.qa-prompt-row .qa-ms-row-switch { padding-left: 14px; }
+.qa-models .qa-prompt-row button.qa-ms-row-main { min-height: 54px; padding-left: 12px; }
+.qa-prompt-row .qa-icon-action { flex: none; }
+.qa-prompt-row .qa-icon-action:last-child { margin-right: 6px; }
+.qa-prompt-row .qa-icon-action.is-active { color: var(--qa-ink); }
+.qa-prompt-empty { padding: 18px 16px; color: var(--qa-muted); font-size: 13px; }
+.qa-prompt-foot { display: flex; flex-direction: column; gap: 2px; color: var(--qa-muted); font-size: 12px; line-height: 1.6; }
+.qa-prompt-foot a { color: var(--qa-muted); text-decoration-line: underline; }
+.qa-prompt-editor-top { display: flex; align-items: center; gap: 8px; }
+.qa-prompt-editor-top h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.qa-prompt-note { margin: 0; padding: 8px 12px; border: 1px solid var(--qa-line); border-radius: 10px; background: var(--qa-soft); color: var(--qa-muted); font-size: 12px; line-height: 1.6; }
+.qa-prompt-form-fields { padding: 4px 0; }
+.qa-prompt-meta-fields { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--qa-line); }
+.qa-prompt-meta-fields > .qa-ms-wide { padding: 14px 16px; }
+.qa-prompt-meta-fields > .qa-ms-wide + .qa-ms-wide { border-left: 1px solid var(--qa-line); }
+.qa-prompt-form-fields > .setting-item { border-top: 1px solid var(--qa-line); }
+.qa-prompt-body { min-height: 260px; font-family: var(--font-monospace); font-size: 12px; line-height: 1.6; }
+.qa-prompt-hint { margin-top: 6px; color: var(--qa-muted); font-size: 12px; }
+.qa-prompt-help { margin-top: 6px; color: var(--qa-muted); font-size: 12px; }
+.qa-prompt-help summary { cursor: pointer; }
+.qa-prompt-help ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.8; }
+.qa-prompt-help code { font-size: 11px; }
+.qa-prompt-editor-actions { display: flex; align-items: center; gap: 8px; }
+.qa-prompt-editor-spacer { flex: 1; }
 
 /* Approval cards and per-turn change review */
 .qiaomu-agent--react .qa-approval { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: 12px; background: var(--background-primary); }

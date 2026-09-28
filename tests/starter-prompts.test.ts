@@ -16,11 +16,11 @@ it("treats only today's daily note as the daily scene, in common naming styles",
     expect(starterScene({ selection: false, reading: false, noteName: name, today })).toBe("note");
 });
 
-it("keeps the library well-formed: unique ids, and a trailing ellipsis exactly when the user finishes the sentence", () => {
+it("keeps the library well-formed: unique ids, and a trailing ellipsis exactly when the prompt asks for a blank", () => {
   const all = Object.values(STARTER_PROMPTS).flat();
   expect(new Set(all.map((p) => p.id)).size).toBe(all.length);
   for (const scene of Object.values(STARTER_PROMPTS)) expect(scene.length).toBeGreaterThanOrEqual(4);
-  for (const p of all) expect(p.label.endsWith("…")).toBe(/[：:]\n?$/.test(p.body));
+  for (const p of all) expect(p.label.endsWith("…")).toBe(/\{\{[^}]+\}\}/.test(p.body));
 });
 
 it("orders menu groups by scene, and a daily note also gets note prompts", () => {
