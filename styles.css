@@ -314,6 +314,7 @@
 .qiaomu-agent--react .qa-prompt-form-head button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); }
 .qiaomu-agent--react .qa-prompt-field { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
 .qiaomu-agent--react .qa-prompt-field label { color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-prompt-field textarea { height: var(--qa-prompt-height, auto); max-height: 140px; }
 .qiaomu-agent--react .qa-prompt-field textarea, .qiaomu-agent--react .qa-prompt-field select { width: 100%; min-height: 34px; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 9px; background: var(--background-primary); font-size: 13px; line-height: 1.5; resize: none; }
 .qiaomu-agent--react .qa-prompt-field textarea:focus-visible, .qiaomu-agent--react .qa-prompt-field select:focus-visible { border-color: var(--text-muted); box-shadow: none; outline: none; }
 .qiaomu-agent--react .qa-prompt-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--text-faint); font-size: 11px; }

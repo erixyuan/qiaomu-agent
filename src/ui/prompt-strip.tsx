@@ -135,7 +135,7 @@ export function PromptForm({ item, fields, values, onChange, onSubmit, onCancel 
           ? <select id={inputId} ref={index === 0 ? first : undefined} value={values[field.name] ?? field.defaultValue ?? ""} onChange={(event) => onChange(field.name, event.currentTarget.value)} onKeyDown={(event) => keys(event, last)}>
             {field.options.map((option) => <option key={option} value={option}>{option}</option>)}</select>
           : <textarea id={inputId} ref={index === 0 ? first : undefined} rows={1} value={values[field.name] ?? ""} placeholder={field.defaultValue ?? ""}
-            onChange={(event) => { onChange(field.name, event.currentTarget.value); event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 140)}px`; }}
+            onChange={(event) => { onChange(field.name, event.currentTarget.value); event.currentTarget.style.removeProperty("--qa-prompt-height"); event.currentTarget.style.setProperty("--qa-prompt-height", `${Math.min(event.currentTarget.scrollHeight, 140)}px`); }}
             onKeyDown={(event) => keys(event, last)} />}
       </div>;
     })}
