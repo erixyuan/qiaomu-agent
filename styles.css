@@ -462,7 +462,7 @@
 .qiaomu-agent--react .qa-mermaid iframe { display: block; width: 100%; height: 160px; border: 0; background: transparent; }
 .qiaomu-agent--react .qa-mermaid summary { color: var(--text-muted); font-size: 12px; cursor: pointer; }
 .qiaomu-agent--react .qa-mermaid pre { max-height: 300px; overflow: auto; white-space: pre-wrap; }
-.qiaomu-agent--react .qa-model-control .qa-effort-label { color: var(--text-faint); font-size: var(--font-ui-small); font-weight: 400; }
+.qiaomu-agent--react .qa-model-control .qa-effort-label { color: var(--text-muted); font-size: 11px; line-height: 16px; font-weight: 400; white-space: nowrap; }
 
 /* Context window ring (after AI Elements Context) */
 .qiaomu-agent--react .qa-context-control .qa-control-trigger { padding: 4px; }
@@ -520,6 +520,22 @@
 .is-mobile .qiaomu-agent--react .qa-empty-connect { min-height: 44px; }
 .is-mobile .qiaomu-agent--react .qa-prompt-textarea { max-height: min(180px, 28dvh); }
 .is-mobile .qiaomu-agent--react .qa-command-menu button { min-height: 44px; font-size: 15px; }
+
+.qiaomu-agent--react .qa-model-control .qa-control-trigger { gap: 5px; align-items: center; }
+.qiaomu-agent--react .qa-model-control .qa-model-name { font-size: 12px; line-height: 18px; font-weight: 400; }
+
+/* One live status, with an opt-in event log; no JavaScript animation timers. */
+.qiaomu-agent--react .qa-live-status { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 8px; color: var(--text-muted); font-size: 13px; }
+.qiaomu-agent--react .qa-live-work > summary { display: flex; gap: 8px; max-width: 100%; }
+.qiaomu-agent--react .qa-live-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.qiaomu-agent--react .qa-working-glyph { flex: none; color: var(--text-muted); }
+.qiaomu-agent--react .qa-working-glyph path { transform-origin: 12px 12px; }
+.qiaomu-agent--react .qa-orbit { animation: qa-orbit 3.6s linear infinite; }
+.qiaomu-agent--react .qa-orbit-inner { animation: qa-orbit 2.4s linear infinite reverse; opacity: .55; }
+@keyframes qa-orbit { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .qiaomu-agent--react .qa-working-glyph path { animation: none; }
+}
 
 /* Brand marks (lobe icons): mono marks follow the text color. */
 .qa-brand { display: inline-flex; flex: none; align-items: center; justify-content: center; color: var(--text-normal); }
@@ -1135,3 +1151,85 @@ details[open] > .qa-disclosure .qa-disclosure-chevron { transform: rotate(90deg)
   --color-green:#a3c7ae; --color-green-rgb:163,199,174; --color-red:#ff939b; --color-red-rgb:255,147,155;
   --text-warning:#d8b795;
 }
+
+/* Settings typography and geometry. Scoped so the host theme and chat remain independent.
+ * Design references (2026-09-28): Vercel Geist typography/colors; WCAG 1.4.3.
+ * Original CSS, no upstream component source copied.
+ */
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-model-manager-modal, .qa-capabilities-modal) {
+  --qa-ink: #202020;
+  --qa-muted: #666666;
+  --qa-line: #e5e5e5;
+  --qa-surface: #ffffff;
+  --qa-soft: #f7f7f7;
+  --qa-focus: #737373;
+  font-family: var(--font-interface), -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--qa-ink);
+  background-color: var(--qa-surface);
+  text-autospace: normal;
+}
+.theme-dark :is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-model-manager-modal, .qa-capabilities-modal) {
+  --qa-ink: #ededed;
+  --qa-muted: #a8a8a8;
+  --qa-line: #353535;
+  --qa-surface: #202020;
+  --qa-soft: #292929;
+  --qa-focus: #a8a8a8;
+}
+.qiaomu-agent-settings__header { padding-top: 8px; }
+.qiaomu-agent-settings__identity { gap: 10px; min-height: 28px; margin-bottom: 22px; }
+.qiaomu-agent-settings__identity > span { display: flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 28px; color: var(--qa-ink); }
+.qiaomu-agent-settings__identity svg { display: block; width: 22px; height: 22px; stroke-width: 1.75; }
+/* Native .setting-item-heading has margin-bottom:16px. Center the text box itself. */
+.qiaomu-agent-settings .qiaomu-agent-settings__identity .setting-item { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.qiaomu-agent-settings__identity .setting-item-info { margin: 0; padding: 0; }
+.qiaomu-agent-settings__identity .setting-item-name { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: 0; }
+.qiaomu-agent-settings__header .qiaomu-agent-settings__tabs { gap: 24px; }
+.qiaomu-agent-settings__header button.qiaomu-agent-settings__tab { min-height: 40px; padding: 0 0 10px; font-size: 14px; line-height: 20px; }
+.qiaomu-agent-settings__header button.qiaomu-agent-settings__tab:focus-visible { outline: 1px solid var(--qa-focus); outline-offset: 3px; }
+.qiaomu-agent-settings__body.qa-models { gap: 28px; margin-top: 24px; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-head { align-items: center; gap: 16px; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-head h3 { font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: 0; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-head p { margin-top: 5px; font-size: 13px; line-height: 1.6; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) button.qa-ms-button { justify-content: center; min-height: 32px; height: auto; padding: 5px 10px; font-size: 13px; line-height: 20px; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-button-icon { align-items: center; justify-content: center; flex: none; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-button-icon svg { display: block; width: 15px; height: 15px; }
+:is(.qiaomu-agent-settings, .qa-provider-modal) .qa-ms-button.is-primary .qa-ms-button-icon { color: inherit; }
+.qiaomu-agent-settings .qa-ms-row-main:is(button, .is-static) { gap: 12px; min-height: 68px; padding: 12px 8px 12px 16px; }
+.qiaomu-agent-settings .qa-ms-row-main > .qa-brand { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; height: 24px; }
+.qiaomu-agent-settings .qa-ms-row-main > .qa-brand svg { width: 20px; height: 20px; }
+.qiaomu-agent-settings .qa-ms-row-icon { width: 28px; height: 28px; border: 0; background: transparent; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-row-name { font-size: 14px; line-height: 21px; font-weight: 500; overflow-wrap: anywhere; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .qa-ms-row-sub { margin-top: 3px; font-size: 13px; line-height: 19px; }
+.qiaomu-agent-settings .qa-ms-row.is-off .qa-ms-row-name { opacity: 1; color: var(--qa-muted); }
+.qiaomu-agent-settings .qa-ms-chevron { color: var(--qa-muted); }
+.qiaomu-agent-settings .qa-ms-chevron svg { display: block; width: 14px; height: 14px; }
+.qiaomu-agent-settings .qa-ms-settings .setting-item { padding: 14px 16px; }
+.qiaomu-agent-settings .qa-ms-settings .setting-item-name { font-size: 14px; line-height: 21px; }
+.qiaomu-agent-settings .qa-ms-settings .setting-item-description,
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-capabilities-modal) :is(.qa-ms-wide-hint, .qa-ms-note, .qa-ms-empty-text, .qa-cap-row-desc) { font-size: 13px; line-height: 1.6; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-capabilities-modal) :is(.qa-ms-wide-label, .qa-ms-field-label) { font-size: 14px; line-height: 21px; }
+/* Stable single border; keyboard focus uses a thin inset cue, never a glow. */
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) input.qa-ms-input:focus { border-color: var(--qa-line); box-shadow: none !important; }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) :is(input:not([type="checkbox"]), textarea, select):focus-visible { border-color: var(--qa-focus); outline: none !important; box-shadow: none !important; }
+.qiaomu-agent-settings { container-type: inline-size; }
+@container (max-width: 480px) {
+  .qiaomu-agent-settings__header .qiaomu-agent-settings__tabs { gap: 22px; }
+  .qiaomu-agent-settings__body .qa-ms-head { flex-wrap: wrap; gap: 10px; }
+  .qiaomu-agent-settings__body .qa-ms-head-actions { margin-left: auto; }
+  .qiaomu-agent-settings__body .qa-ms-row-main:is(button, .is-static) { padding-left: 12px; gap: 10px; }
+  .qiaomu-agent-settings__body .qa-ms-row-switch { padding-right: 12px; }
+  .qiaomu-agent-settings__body .qa-ms-settings > .setting-item { flex-wrap: wrap; gap: 10px; }
+  .qiaomu-agent-settings__body .qa-ms-settings .setting-item-control { margin-left: auto; max-width: 100%; }
+  .qiaomu-agent-settings__body .qa-ms-settings .setting-item-control select { max-width: 100%; }
+  .qiaomu-agent-settings__body .qa-ms-row-sub { white-space: normal; overflow-wrap: anywhere; }
+}
+@media (pointer: coarse) {
+  .qiaomu-agent-settings__header button.qiaomu-agent-settings__tab,
+  :is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) button.qa-ms-button { min-height: 44px; }
+}
+/* An enabled switch needs contrast between the track and thumb in both themes. */
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .checkbox-container.is-enabled { background-color: var(--qa-ink); --toggle-thumb-color: var(--qa-surface); }
+:is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .checkbox-container:focus-visible { outline: 1px solid var(--qa-focus); outline-offset: 3px; }

@@ -42,7 +42,7 @@ describe("prompt library", () => {
     const settings = normalizePromptSettings({});
     const ids = BUILTIN_PROMPTS.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(BUILTIN_PROMPTS.filter((item) => item.source === "qiaomu")).toHaveLength(50);
+    expect(BUILTIN_PROMPTS.filter((item) => item.source === "qiaomu")).toHaveLength(52);
     expect(BUILTIN_PROMPTS.filter((item) => item.source === "yao").length).toBeGreaterThan(20);
     for (const item of BUILTIN_PROMPTS) expect(isEnabled(item, settings)).toBe(item.source === "scene");
     expect(isEnabled(user, settings)).toBe(true);
@@ -99,4 +99,13 @@ describe("prompt library", () => {
     expect(moved[0]).toMatchObject({ item: { title: "我的快捷问题", body: "我的快捷问题" }, pinned: true });
     expect(legacyPrompts(undefined, undefined)).toEqual([]);
   });
+});
+
+it("keeps the supplied image prompts intact, credited and insert-only", () => {
+  const poster = BUILTIN_PROMPTS.find((p) => p.id === "image-window-poster")!;
+  const infographic = BUILTIN_PROMPTS.find((p) => p.id === "image-x-infographic")!;
+  expect(poster.title).toContain("小小东");
+  expect(poster.body).toContain("【核心物象】");
+  expect(infographic.body).toContain("也不要调用其他skill。");
+  expect(poster.run).toBe("insert"); expect(infographic.run).toBe("insert");
 });
