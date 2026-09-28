@@ -1,9 +1,10 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import type { ApprovalRequest, ApprovalState, ChatActivity, ChatAttachment, ChatBackend, ChatCallbacks, ChatMessage, ChatPlan, ChatRequest, ContextUsage, FileChange, GeneratedAttachment, TimelineEntry, TurnChanges } from "../types";
+import type { ApprovalRequest, ApprovalState, ChatActivity, ChatAttachment, ChatBackend, ChatCallbacks, ChatMessage, ChatPlan, ChatRequest, ContextUsage, FileChange, GeneratedAttachment, QuestionAnswers, QuestionRequest, QuestionState, TimelineEntry, TurnChanges } from "../types";
+import { storableQuestion } from "./user-questions";
 
 export type AgentMessage = UIMessage<
   { createdAt: number; finishedAt?: number; backend?: string; sourcePath?: string; attachments?: import("../types").ChatAttachment[] },
-  { activity: ChatActivity; plan: ChatPlan; status: string; attachment: ChatAttachment; changes: TurnChanges; approval: ApprovalState; usage: ContextUsage }
+  { activity: ChatActivity; plan: ChatPlan; status: string; attachment: ChatAttachment; changes: TurnChanges; approval: ApprovalState; question: QuestionState; usage: ContextUsage }
 >;
 
 /** Per-turn host services: change tracking, file access and approvals. */
@@ -11,6 +12,7 @@ export interface TurnHooks {
   onFileIntent?: ChatCallbacks["onFileIntent"];
   host?: ChatCallbacks["host"];
   awaitApproval?: (request: ApprovalRequest, signal: AbortSignal) => Promise<string | null>;
+  awaitAnswers?: (request: QuestionRequest, signal: AbortSignal) => Promise<QuestionAnswers | null>;
   /** Collects what the turn changed; called once, also after errors and aborts. */
   finish?: () => Promise<FileChange[]>;
   /** Receives changes the stream could no longer carry (the turn was stopped). */
@@ -46,14 +48,16 @@ export const messageText = (message: AgentMessage): string => textRuns(message).
 const TEXT_RUN_SEPARATOR = "\n\n";
 
 function messageTimeline(message: AgentMessage): TimelineEntry[] | undefined {
-  if (!message.parts.some((part) => part.type === "data-activity" || part.type === "data-plan")) return undefined;
+  if (!message.parts.some((part) => part.type === "data-activity" || part.type === "data-plan" || part.type === "data-question")) return undefined;
   return message.parts.flatMap((part): TimelineEntry[] => part.type === "text" ? (part.text.trim() ? [{ text: part.text.length }] : [])
-    : part.type === "data-activity" ? [{ activity: part.data.id }] : part.type === "data-plan" ? [{ plan: true }] : []);
+    : part.type === "data-activity" ? [{ activity: part.data.id }] : part.type === "data-plan" ? [{ plan: true }]
+      : part.type === "data-question" ? [{ question: part.data.id }] : []);
 }
 
 /** Rebuilds the ordered parts of a stored reply; falls back to steps-then-text when the timeline no longer fits the text. */
 function timelineParts(message: ChatMessage): AgentMessage["parts"] {
   const activities = new Map((message.activities ?? []).map((data) => [data.id, data]));
+  const questions = new Map((message.questions ?? []).map((data) => [data.id, data]));
   const legacy: AgentMessage["parts"] = [
     ...(message.plan ? [{ type: "data-plan" as const, id: "plan", data: message.plan }] : []),
     ...[...activities.values()].map((data) => ({ type: "data-activity" as const, id: data.id, data })),
@@ -70,6 +74,7 @@ function timelineParts(message: ChatMessage): AgentMessage["parts"] {
       return [{ type: "text", text }];
     }
     if ("plan" in entry) return message.plan ? [{ type: "data-plan", id: "plan", data: message.plan }] : [];
+    if ("question" in entry) { const data = questions.get(entry.question); return data ? [{ type: "data-question", id: data.id, data }] : []; }
     const data = activities.get(entry.activity);
     return data ? [{ type: "data-activity", id: data.id, data }] : [];
   });
@@ -86,6 +91,11 @@ export function toStoredMessage(message: AgentMessage): ChatMessage {
     attachments: [...attachments.values()].map((attachment) => attachment.vaultPath ? { ...attachment, url: undefined } : attachment),
     activities: message.parts.filter((p) => p.type === "data-activity").map((p) => p.data),
     timeline: messageTimeline(message),
+    questions: (() => {
+      // A question still open when the reply was saved can no longer be answered.
+      const asked = message.parts.flatMap((p) => p.type === "data-question" ? [storableQuestion(p.data.status === "pending" ? { ...p.data, status: "cancelled" } : p.data)] : []);
+      return asked.length ? asked : undefined;
+    })(),
     plan: (() => { const part = message.parts.find((p) => p.type === "data-plan"); return part?.type === "data-plan" ? part.data : undefined; })(),
     finishedAt: message.metadata?.finishedAt,
     changes: (() => { const part = message.parts.find((p) => p.type === "data-changes"); return part && part.type === "data-changes" ? storableChanges(part.data) : undefined; })(),
@@ -177,6 +187,13 @@ export class AgentTransport implements ChatTransport<AgentMessage> {
                 const chosen = await hooks.awaitApproval!(approval, controller.signal).catch(() => null);
                 emit({ type: "data-approval", id: approval.id, data: { ...approval, status: chosen ? "decided" : "cancelled", ...(chosen ? { chosen } : {}) } });
                 return chosen;
+              } : undefined,
+              requestUserInput: hooks?.awaitAnswers ? async (question) => {
+                endRun();
+                emit({ type: "data-question", id: question.id, data: { ...question, status: "pending" } });
+                const answers = await hooks.awaitAnswers!(question, controller.signal).catch(() => null);
+                emit({ type: "data-question", id: question.id, data: { ...question, status: answers ? "answered" : "cancelled", ...(answers ? { answers } : {}) } });
+                return answers;
               } : undefined,
             }, controller.signal);
             controller.signal.throwIfAborted();

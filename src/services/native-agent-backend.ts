@@ -18,6 +18,7 @@ import { promptWithContext } from "./cli-profiles";
 import { acpContextUsage, codexContextUsage } from "./context-usage";
 import { JsonRpcProcess } from "./json-rpc-process";
 import { getRuntimeRequire } from "./runtime-require";
+import { acpElicitationQuestions, acpElicitationResponse, codexQuestionRequest, codexQuestionResponse } from "./user-questions";
 
 const ACP_AGENTS = new Set(["gemini", "opencode", "qwen", "kimi", "cursor", "cline", "auggie", "hermes", "openclaw"]);
 
@@ -298,7 +299,7 @@ export class NativeAgentBackend implements ChatBackend {
     if (modeChanged) await this.shutdown();
     if (this.process?.running && this.ready) return;
     const args = transport === "app-server"
-      ? ["app-server", "--listen", "stdio://"]
+      ? [...CODEX_FEATURES, "app-server", "--listen", "stdio://"]
       : [...(this.detection.nativeArgsPrefix ?? []), ...acpLaunch(this.detection.id, request.permissionMode)];
     const process = new JsonRpcProcess({
       executablePath: path,
@@ -334,7 +335,8 @@ export class NativeAgentBackend implements ChatBackend {
         const initialized = await process.request("initialize", {
           protocolVersion: 1,
           // Reads and writes go through Obsidian so the turn can be reviewed and rolled back.
-          clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+          // Form elicitation lets Claude's AskUserQuestion reach the question card instead of a permission prompt.
+          clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, elicitation: { form: {} } },
           clientInfo: { name: "qiaomu-agent", title: "Qiaomu Agent for Obsidian", version: "0.1.0" },
         }, 15_000);
         const protocolVersion = record(initialized)?.protocolVersion;
@@ -581,6 +583,20 @@ export class NativeAgentBackend implements ChatBackend {
       });
       return;
     }
+    if (method === "item/tool/requestUserInput" || method === "elicitation/create") {
+      const ask = this.activeCallbacks?.requestUserInput;
+      const questionId = `question-${String(id)}`;
+      if (method === "item/tool/requestUserInput") {
+        const request = codexQuestionRequest(params, questionId);
+        if (!ask || !request) { reply(codexQuestionResponse(null)); return; }
+        void ask(request).then((answers) => reply(codexQuestionResponse(answers)), () => reply(codexQuestionResponse(null)));
+        return;
+      }
+      const parsed = acpElicitationQuestions(params, questionId);
+      if (!ask || !parsed) { reply({ action: "decline" }); return; }
+      void ask(parsed.request).then((answers) => reply(acpElicitationResponse(parsed, answers)), () => reply({ action: "cancel" }));
+      return;
+    }
     const codexApproval = CODEX_APPROVALS[method];
     if (codexApproval) {
       const ask = this.activeCallbacks?.requestApproval;
@@ -613,6 +629,9 @@ export class NativeAgentBackend implements ChatBackend {
     return null;
   }
 }
+
+/** request_user_input is otherwise limited to Codex's Plan mode; the sidebar answers it in every mode. */
+export const CODEX_FEATURES = ["-c", "features.default_mode_request_user_input=true"];
 
 const OPTION_LABELS: Record<string, string> = { allow_once: "允许一次", allow_always: "本次会话都允许", reject_once: "拒绝", reject_always: "始终拒绝" };
 

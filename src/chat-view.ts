@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Chat } from "@ai-sdk/react";
 import type QiaomuAgentPlugin from "./main";
-import type { AgentSkill, PermissionMode, ChatAttachment, ChatMessage, ChatRequest, EditorSelectionContext, GeneratedAttachment, ModelChoice } from "./types";
+import type { AgentSkill, PermissionMode, ChatAttachment, ChatMessage, ChatRequest, EditorSelectionContext, GeneratedAttachment, ModelChoice, QuestionAnswers, QuestionRequest } from "./types";
 import { ADD_COMMANDS, commandHotkey, type AddKind } from "./services/hotkeys";
 import { FilePicker, FolderPicker, PromptManager, AppendDialog, FullAccessDialog, WebPageDialog } from "./ui/host-dialogs";
 import { folderAttachment, webPageAttachment, readAttachment, validateAttachments, FOLDER_NOTE_LIMIT, MAX_ATTACHMENT_BYTES } from "./services/attachments";
@@ -58,6 +58,8 @@ export class ChatView extends ItemView {
   private readonly sourceState = new Map<string, { loading?: boolean; error?: string }>();
   /** Pending approval cards: id → resolver for the agent's request. */
   private readonly approvals = new Map<string, (choice: string | null) => void>();
+  /** Open question cards: id → resolver for the agent's questions. */
+  private readonly questions = new Map<string, (answers: QuestionAnswers | null) => void>();
 
   constructor(leaf: WorkspaceLeaf, readonly plugin: QiaomuAgentPlugin) { super(leaf); }
   getViewType(): string { return VIEW_TYPE_QIAOMU_AGENT; }
@@ -122,7 +124,8 @@ export class ChatView extends ItemView {
           trackChanges ? this.mentionedSnapshots(request.prompt, file?.path ?? "") : undefined,
         ]);
         signal.throwIfAborted();
-        let turn: TurnHooks | undefined;
+        // Every turn can ask questions; only tracked turns also get file hooks.
+        let turn: TurnHooks = { awaitAnswers: this.awaitAnswers };
         if (snapshots) {
           if (file && activeFileContent !== undefined) snapshots.set(file.path, activeFileContent);
           turn = this.turnHooks(snapshots);
@@ -357,6 +360,15 @@ export class ChatView extends ItemView {
     }
     return snapshots;
   }
+  /** Shows the agent's questions as a card and waits until they are answered, skipped or the turn stops. */
+  private readonly awaitAnswers = (request: QuestionRequest, signal: AbortSignal) => new Promise<QuestionAnswers | null>((resolve) => {
+    if (signal.aborted) { resolve(null); return; }
+    const done = (answers: QuestionAnswers | null) => { this.questions.delete(request.id); signal.removeEventListener("abort", cancel); resolve(answers); };
+    const cancel = () => done(null);
+    this.questions.set(request.id, done);
+    signal.addEventListener("abort", cancel, { once: true });
+    if (!this.containerEl.isShown()) new Notice("Agent 有问题需要你回答");
+  });
   /** Tracks what an agent turn changes, routes ACP file access through the vault, and asks for approvals. */
   private turnHooks(snapshots: Map<string, string>): TurnHooks {
     const root = this.plugin.skillService.getVaultRoot();
@@ -394,6 +406,7 @@ export class ChatView extends ItemView {
         signal.addEventListener("abort", cancel, { once: true });
         new Notice("Agent 正在等待你批准一个操作");
       }),
+      awaitAnswers: this.awaitAnswers,
       finish: () => tracker.finish(),
       onLateChanges: (files) => this.attachLateChanges(files),
     };
@@ -616,6 +629,7 @@ export class ChatView extends ItemView {
       onDismissReading: () => this.plugin.reading.dismiss(),
       onComposerFocus: () => this.render(),
       onApprove: (id: string, choice: string | null) => this.approvals.get(id)?.(choice),
+      onAnswer: (id: string, answers: QuestionAnswers | null) => this.questions.get(id)?.(answers),
       onRevertChanges: (messageId: string) => this.openRevert(messageId),
       onOpenFile: (path: string) => { const file = this.app.vault.getAbstractFileByPath(path); if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file); },
       onPersist: () => this.persist(),

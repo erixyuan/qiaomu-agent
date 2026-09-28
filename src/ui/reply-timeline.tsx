@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { AlertCircle, ChevronRight, Circle, CircleCheck } from "lucide-react";
 import type { AgentMessage } from "../services/chat-transport";
-import type { ApprovalState, ChatActivity, ChatPlan } from "../types";
+import type { ApprovalState, ChatActivity, ChatPlan, QuestionState } from "../types";
 
 /** A reply in the order it happened: text runs, groups of steps, the plan and questions for the user. */
 export type ReplySegment =
   | { kind: "text"; key: string; text: string }
   | { kind: "steps"; key: string; steps: ChatActivity[] }
   | { kind: "plan"; key: string; plan: ChatPlan }
-  | { kind: "approval"; key: string; approval: ApprovalState };
+  | { kind: "approval"; key: string; approval: ApprovalState }
+  | { kind: "question"; key: string; question: QuestionState };
 
 export function replySegments(message: AgentMessage): ReplySegment[] {
   const segments: ReplySegment[] = [];
@@ -21,6 +22,7 @@ export function replySegments(message: AgentMessage): ReplySegment[] {
       else segments.push({ kind: "steps", key: `steps-${part.data.id}`, steps: [part.data] });
     } else if (part.type === "data-plan") segments.push({ kind: "plan", key: "plan", plan: part.data });
     else if (part.type === "data-approval") segments.push({ kind: "approval", key: `approval-${part.data.id}`, approval: part.data });
+    else if (part.type === "data-question") segments.push({ kind: "question", key: `question-${part.data.id}`, question: part.data });
   });
   return segments;
 }
@@ -40,22 +42,27 @@ interface ReplyProps {
   statusText: string;
   renderText: (text: string, key: string) => ReactNode;
   renderApproval: (approval: ApprovalState) => ReactNode;
+  renderQuestion: (question: QuestionState) => ReactNode;
 }
 
 /**
  * While the agent works, everything shows in order, the way Codex does; once done, the work folds into
  * "已处理 …" and only the final answer stays in view.
  */
-export function ReplyTimeline({ message, active, statusText, renderText, renderApproval }: ReplyProps) {
+export function ReplyTimeline({ message, active, statusText, renderText, renderApproval, renderQuestion }: ReplyProps) {
   const segments = replySegments(message);
   const render = (segment: ReplySegment) => segment.kind === "text" ? <div key={segment.key} className="qa-reply-segment">{renderText(segment.text, segment.key)}</div>
     : segment.kind === "steps" ? <StepList key={segment.key} steps={segment.steps} running={active} />
       : segment.kind === "plan" ? <PlanCard key={segment.key} plan={segment.plan} running={active} />
-        : <div key={segment.key} className="qa-reply-segment">{renderApproval(segment.approval)}</div>;
+        : segment.kind === "question" ? <div key={segment.key} className="qa-reply-segment">{renderQuestion(segment.question)}</div>
+          : <div key={segment.key} className="qa-reply-segment">{renderApproval(segment.approval)}</div>;
   if (active) {
     const stepRunning = message.parts.some((p) => p.type === "data-activity" && p.data.status === "running");
     const streaming = segments[segments.length - 1]?.kind === "text" && !statusText;
+    const asking = segments.some((segment) => segment.kind === "question" && segment.question.status === "pending");
     const label = statusText || (streaming || stepRunning ? "" : "正在思考…");
+    // The open card already says what the agent is waiting for.
+    if (asking) return <>{segments.map(render)}</>;
     return <>{segments.map(render)}
       <div className={`qa-working-tail${label ? "" : " is-quiet"}`} role="status">{label ? <span className="qa-shimmer">{label}</span> : <span className="qiaomu-agent__sr-only">正在回复</span>}</div>
     </>;

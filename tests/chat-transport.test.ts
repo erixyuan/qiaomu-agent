@@ -120,3 +120,29 @@ it("shows old replies as steps then text, and falls back when the timeline no lo
   const edited = fromStoredMessage({ id: "m", role: "assistant", content: "改过的答案", createdAt: 1, activities: [activity], timeline: [{ text: 2 }, { activity: "a" }] });
   expect(edited.parts.slice(0, 2)).toMatchObject([{ type: "data-activity" }, { type: "text", text: "改过的答案" }]);
 });
+it("streams a question card, returns the answers to the agent and keeps the Q&A in its place when saved", async () => {
+  const question = { id: "question-1", questions: [{ id: "style", header: "风格", question: "用哪种风格？", options: [{ label: "轻松" }, { label: "理性" }] },
+    { id: "token", question: "访问令牌？", options: [], secret: true }] };
+  const transport = new AgentTransport(async () => ({ request, backend: { id: "cli:test", label: "test", async send(_, c) {
+    c.onText("先确认一下。");
+    const answers = await c.requestUserInput?.(question);
+    c.onText(`已选：${answers?.style?.join("")}`);
+  } }, turn: { awaitAnswers: async () => ({ style: ["轻松"], token: ["sk-secret"] }) } }));
+  const reader = (await transport.sendMessages(options)).getReader(); const chunks = [];
+  for (;;) { const item = await reader.read(); if (item.done) break; chunks.push(item.value); }
+  const cards = chunks.filter((c) => c.type === "data-question") as Array<{ data: { status: string } }>;
+  expect(cards.map((c) => c.data.status)).toEqual(["pending", "answered"]);
+  expect(chunks.filter((c) => c.type === "text-delta").map((c) => (c as { delta: string }).delta).join("")).toContain("已选：轻松");
+  // The text before the question is its own run, so the card sits between the two paragraphs.
+  expect(chunks.filter((c) => c.type === "text-start")).toHaveLength(2);
+
+  const stored = toStoredMessage({ id: "m", role: "assistant", metadata: { createdAt: 1 }, parts: [{ type: "text", text: "先确认一下。" },
+    { type: "data-question", id: "question-1", data: { ...question, status: "answered", answers: { style: ["轻松"], token: ["sk-secret"] } } },
+    { type: "text", text: "已选：轻松" }] });
+  expect(stored.timeline).toEqual([{ text: 6 }, { question: "question-1" }, { text: 5 }]);
+  expect(JSON.stringify(stored)).not.toContain("sk-secret");
+  expect(fromStoredMessage(stored).parts.map((p) => p.type)).toEqual(["text", "data-question", "text"]);
+
+  const open = toStoredMessage({ id: "n", role: "assistant", metadata: { createdAt: 1 }, parts: [{ type: "data-question", id: "q", data: { ...question, id: "q", status: "pending" } }] });
+  expect(open.questions?.[0]?.status).toBe("cancelled");
+});

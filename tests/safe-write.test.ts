@@ -206,6 +206,21 @@ describe("agent protocol hooks", () => {
     expect(edit.replies[0]).toEqual({ id: 3, result: { outcome: { outcome: "cancelled" } } });
   });
 
+  it("answers Codex request_user_input and Claude's form elicitation through the question card, even in read-only turns", async () => {
+    const requestUserInput = vi.fn(async (request: { questions: Array<{ id: string }> }) => ({ [request.questions[0]!.id]: ["理性"] }));
+    const codex = backendWith("codex", "plan", { requestUserInput });
+    codex.handle(6, "item/tool/requestUserInput", { questions: [{ id: "style", header: "风格", question: "哪种？", isOther: true, isSecret: false, options: [{ label: "轻松", description: "" }, { label: "理性", description: "" }] }] });
+    await vi.waitFor(() => expect(codex.replies).toHaveLength(1));
+    expect(codex.replies[0]).toEqual({ id: 6, result: { answers: { style: { answers: ["理性"] } } } });
+    const claude = backendWith("qwen", "plan", { requestUserInput });
+    claude.handle(7, "elicitation/create", { mode: "form", message: "哪种？", requestedSchema: { properties: { question_0: { type: "string", oneOf: [{ const: "轻松" }, { const: "理性" }] } } } });
+    await vi.waitFor(() => expect(claude.replies).toHaveLength(1));
+    expect(claude.replies[0]).toEqual({ id: 7, result: { action: "accept", content: { question_0: "理性" } } });
+    const none = backendWith("codex", "edit", {});
+    none.handle(8, "item/tool/requestUserInput", { questions: [{ id: "a", question: "?", options: null }] });
+    expect(none.replies[0]).toEqual({ id: 8, result: { answers: {} } });
+  });
+
   it("maps Codex approval choices to protocol decisions", async () => {
     const { handle, replies } = backendWith("codex", "edit", { requestApproval: async () => "allow_always" });
     handle(4, "item/commandExecution/requestApproval", { command: "npm test" });
