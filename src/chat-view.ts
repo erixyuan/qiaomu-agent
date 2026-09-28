@@ -18,6 +18,7 @@ import { externalFiles } from "./services/local-host";
 import { ChatPanel } from "./ui/chat-panel";
 import { ModelManagerModal } from "./settings-tab";
 import { CapabilitiesModal } from "./ui/capabilities-modal";
+import { applyChatTheme } from "./services/palettes";
 import { chatFontStack, codeFontStack } from "./services/fonts";
 import { enabledMcpConfig } from "./services/mcp-config";
 import { getRuntimeRequire } from "./services/runtime-require";
@@ -532,8 +533,11 @@ export class ChatView extends ItemView {
       vaultPath,
     });
   }
+  refreshPalette(): void { applyChatTheme(this.contentEl, this.plugin.settings.chatTheme); }
+
   private render(): void {
     if (!this.root) return;
+    this.refreshPalette();
     const appearance = this.plugin.settings;
     this.contentEl.style.setProperty("--qa-chat-font", chatFontStack(appearance.chatFontFamily, appearance.chatFontCustom));
     this.contentEl.style.setProperty("--qa-code-font", codeFontStack(appearance.codeFontFamily));

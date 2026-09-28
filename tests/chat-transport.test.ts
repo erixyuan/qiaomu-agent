@@ -51,7 +51,6 @@ it("closes promptly on abort even when the backend has not settled", async () =>
   const controller = new AbortController();
   const reader = (await transport.sendMessages({ ...options, abortSignal: controller.signal })).getReader();
   expect((await reader.read()).value?.type).toBe("start");
-  expect((await reader.read()).value?.type).toBe("text-start");
   controller.abort(); expect((await reader.read()).value?.type).toBe("abort"); expect((await reader.read()).done).toBe(true);
   release();
 });
@@ -87,4 +86,37 @@ it("reports changes of a stopped turn after its stream closed", async () => {
   for (;;) { const item = await reader.read(); if (item.done) break; }
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(late).toEqual([{ path: "a.md", before: "1", after: "2", tracked: true }]);
+});
+
+it("interleaves text runs with steps and the plan, and keeps that order through storage", async () => {
+  const transport = new AgentTransport(async () => ({ request, backend: { id: "test", label: "test", async send(_, c) {
+    c.onText("我先找歌单。");
+    c.onActivity?.({ id: "a", label: "rg 歌单", status: "running", kind: "command" });
+    c.onPlan?.({ steps: [{ step: "找歌单", status: "completed" }, { step: "添加", status: "inProgress" }] });
+    c.onActivity?.({ id: "a", label: "rg 歌单", status: "completed", kind: "command" });
+    c.onText("找到了"); c.onTextEnd?.(); c.onText("已添加。");
+  } } }));
+  const reader = (await transport.sendMessages(options)).getReader(); const chunks = [];
+  for (;;) { const item = await reader.read(); if (item.done) break; chunks.push(item.value); }
+  const order = chunks.flatMap((c) => c.type === "text-start" ? [`text:${c.id}`] : c.type === "data-activity" || c.type === "data-plan" ? [`${c.type}:${c.id}`] : []);
+  expect(order).toEqual(["text:response-1", "data-activity:a", "data-plan:plan", "data-activity:a", "text:response-2", "text:response-3"]);
+  expect(chunks.find((c) => c.type === "message-metadata")).toMatchObject({ messageMetadata: { finishedAt: expect.any(Number) } });
+
+  const message = { id: "m", role: "assistant" as const, metadata: { createdAt: 1, finishedAt: 5 }, parts: [
+    { type: "text" as const, text: "我先找歌单。" },
+    { type: "data-activity" as const, id: "a", data: { id: "a", label: "rg 歌单", status: "completed" as const, kind: "command" as const } },
+    { type: "data-plan" as const, id: "plan", data: { steps: [{ step: "找歌单", status: "completed" as const }] } },
+    { type: "text" as const, text: "已添加。" }] };
+  const stored = toStoredMessage(message);
+  expect(stored.content).toBe("我先找歌单。\n\n已添加。");
+  expect(stored.timeline).toEqual([{ text: 6 }, { activity: "a" }, { plan: true }, { text: 4 }]);
+  expect(fromStoredMessage(stored).parts.slice(0, 4)).toEqual(message.parts);
+  expect(fromStoredMessage(stored).metadata?.finishedAt).toBe(5);
+});
+it("shows old replies as steps then text, and falls back when the timeline no longer fits", () => {
+  const activity = { id: "a", label: "读取", status: "completed" as const };
+  const legacy = fromStoredMessage({ id: "m", role: "assistant", content: "答案", createdAt: 1, activities: [activity] });
+  expect(legacy.parts.slice(0, 2).map((p) => p.type)).toEqual(["data-activity", "text"]);
+  const edited = fromStoredMessage({ id: "m", role: "assistant", content: "改过的答案", createdAt: 1, activities: [activity], timeline: [{ text: 2 }, { activity: "a" }] });
+  expect(edited.parts.slice(0, 2)).toMatchObject([{ type: "data-activity" }, { type: "text", text: "改过的答案" }]);
 });

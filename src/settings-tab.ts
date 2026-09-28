@@ -3,6 +3,7 @@ import type QiaomuAgentPlugin from "./main";
 import { ProviderSettings } from "./ui/provider-settings";
 import { CapabilitiesModal } from "./ui/capabilities-modal";
 import { searchWeb, WEB_SEARCH_SECRET_ID } from "./services/web-search";
+import { applyChatTheme, CHAT_THEMES, normalizeChatTheme } from "./services/palettes";
 import { availableFonts, chatFontStack, cleanFamily, codeFontStack, type FontChoice } from "./services/fonts";
 import { listMcpServers } from "./services/mcp-config";
 import { DEFAULT_SYSTEM_PROMPT } from "./defaults";
@@ -219,6 +220,7 @@ export class QiaomuSettingTab extends PluginSettingTab {
     preview.createDiv({ cls: "qa-font-preview-text", text: "乔木会用这套字体显示对话。The quick brown fox jumps over 13 lazy dogs." });
     preview.createDiv({ cls: "qa-font-preview-code", text: "const note = await app.vault.read(file);" });
     const refreshPreview = () => {
+      applyChatTheme(preview, settings.chatTheme);
       preview.style.setProperty("--qa-preview-font", chatFontStack(settings.chatFontFamily, settings.chatFontCustom));
       preview.style.setProperty("--qa-preview-size", `${settings.chatFontSize}px`);
       preview.style.setProperty("--qa-preview-code-font", codeFontStack(settings.codeFontFamily));
@@ -228,6 +230,12 @@ export class QiaomuSettingTab extends PluginSettingTab {
     const save = async () => { refreshPreview(); await this.plugin.saveSettings(); };
 
     const list = section.createDiv({ cls: "qa-ms-list qa-ms-settings" });
+    new Setting(list).setName("对话配色").addDropdown((dropdown) => dropdown
+      .addOptions(CHAT_THEMES).setValue(settings.chatTheme).onChange(async (value) => {
+        settings.chatTheme = normalizeChatTheme(value);
+        refreshPreview();
+        await this.plugin.saveAppearance();
+      }));
     const fonts = availableFonts(document);
     const fontSetting = new Setting(list).setName("对话字体");
     const custom = new Setting(list).setName("字体名称").setDesc("填写已安装字体的名称，找不到时使用系统字体。");

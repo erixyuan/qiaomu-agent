@@ -1,8 +1,8 @@
 import { useChat, type Chat } from "@ai-sdk/react";
 import { Component, Keymap, MarkdownRenderer, Notice, Platform, type App, type TFile } from "obsidian";
-import { Check, ChevronDown, ChevronRight, Copy, FileText, FilePlus, Folder, Link, History, Plus, SquarePen, X, AlertCircle, CalendarPlus, FilePlus2, Slash, Paperclip, TextSelect, Sparkles, Shield, FolderPen, ShieldAlert, Pencil, GitBranch, BookOpen, Settings, TreeDeciduous, Globe, Newspaper, Shapes, Plug } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, FileText, FilePlus, Folder, Link, History, Plus, SquarePen, X, CalendarPlus, FilePlus2, Slash, Paperclip, TextSelect, Sparkles, Shield, FolderPen, ShieldAlert, Pencil, GitBranch, BookOpen, Settings, TreeDeciduous, Globe, Newspaper, Shapes, Plug } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { ChatActivity, PermissionMode, ChatAttachment, PromptTemplate } from "../types";
+import type { PermissionMode, ChatAttachment, PromptTemplate } from "../types";
 import type { ModelSource } from "../services/model-sources";
 import { ModelPicker, type PickerSelection } from "./model-picker";
 import { BrandIcon } from "./brand-icon";
@@ -19,6 +19,7 @@ import { PromptInput, PromptInputFooter, PromptInputHeader, PromptInputSubmit, P
 import { splitMermaid } from "../services/mermaid-content";
 import { internalLinkTarget, tidyInternalLinks } from "../services/markdown-links";
 import { MermaidDiagram } from "./mermaid-diagram";
+import { ReplyTimeline } from "./reply-timeline";
 import { ComposerPopover, effortLabel } from "./composer-popover";
 import { ContextRing } from "./context-ring";
 import { conversationImages } from "../services/conversation-images";
@@ -97,24 +98,6 @@ function NoteMarkdown(props: { text: string; sourcePath: string; app: App; paren
     : <HostMarkdown key={index} {...props} text={part.text} />)}</>;
 }
 
-function Activities({ activities, running }: { activities: ChatActivity[]; running: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = activities.filter((a) => a.label !== "userMessage");
-  const failed = visible.some((a) => a.status === "failed");
-  useEffect(() => { if (failed) setExpanded(true); }, [failed]);
-  if (!visible.length) return null;
-  const current = running && visible.find((a) => a.status === "running");
-  return <details className="qa-activities" open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
-    <summary>{failed ? <AlertCircle size={14} /> : current ? <span className="qa-working-dot" /> : <Check size={14} />}
-      <span>{current ? current.label : `${visible.length} 个执行步骤${failed ? " · 有失败" : ""}`}</span><ChevronRight className="qa-chevron" size={14} />
-    </summary>
-    {visible.map((activity) => <details key={activity.id} className="qa-activity">
-      <summary><span>{activity.label}</span><span>{activity.status === "completed" ? "完成" : activity.status === "failed" ? "失败" : running ? "进行中" : "已结束"}</span></summary>
-      {activity.detail && <pre>{activity.detail}</pre>}
-    </details>)}
-  </details>;
-}
-
 const messageTime = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
 
 export function ChatPanel(props: Props) {
@@ -143,9 +126,6 @@ export function ChatPanel(props: Props) {
   const locked = useRef(false);
   const inputId = useId();
   const running = status === "submitted" || status === "streaming";
-  // While the reply has no text yet, its placeholder carries the status instead of the composer.
-  const lastMessage = messages.at(-1);
-  const waitingText = running && lastMessage?.role === "assistant" && !messageText(lastMessage);
   const contextUsage = latestUsage(messages);
   const query = slashQuery(input);
   const scene = starterScene({ selection: Boolean(props.editorSelection), reading: Boolean(props.reading), noteName: props.note?.basename });
@@ -295,8 +275,7 @@ export function ChatPanel(props: Props) {
           const text = messageText(message);
           const latest = index === visible.length - 1;
           const active = running && latest && message.role === "assistant";
-          const activities = message.parts.filter((p) => p.type === "data-activity").map((p) => p.data);
-          const approvals = message.parts.filter((p) => p.type === "data-approval").map((p) => p.data);
+          const assistant = message.role === "assistant";
           const changes = message.parts.find((p) => p.type === "data-changes");
           const messageAttachments = new Map((message.metadata?.attachments ?? []).map((attachment) => [attachment.id, attachment]));
           for (const part of message.parts) if (part.type === "data-attachment") messageAttachments.set(part.data.id, part.data);
@@ -305,14 +284,16 @@ export function ChatPanel(props: Props) {
               <Attachments files={[...messageAttachments.values()]} variant={message.role === "assistant" ? "grid" : "inline"}
                 onOpenImage={openRenderedImage}
                 onImageMenu={(image, event) => showConversationImageMenu(props.app, image, event, props.imageTargetNote, addReferenceImage)} />
-              <Activities activities={activities} running={active} />
-              {approvals.map((approval) => <ApprovalCard key={approval.id} approval={approval} onChoose={(choice) => props.onApprove(approval.id, choice)} />)}
               {message.role === "user" && editingId === message.id ? <form className="qa-message-editor" onSubmit={(event) => { event.preventDefault(); void submitEdit(message); }}>
                 <label className="qiaomu-agent__sr-only" htmlFor={`${inputId}-edit-${message.id}`}>编辑消息内容</label>
                 <textarea id={`${inputId}-edit-${message.id}`} value={editText} onChange={(event) => setEditText(event.currentTarget.value)} autoFocus rows={3}
                   onKeyDown={(event) => { if (Platform.isDesktopApp && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submitEdit(message); } }} />
                 <div className="qa-message-editor-actions"><button type="button" onClick={() => setEditingId(null)}>取消</button><button type="submit" className="mod-cta" disabled={!editText.trim()}>发送</button></div>
-              </form> : text ? <NoteMarkdown text={text} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} /> : active ? <div className="qa-thinking" role="status">{props.statusText || (activities.find((a) => a.status === "running")?.label ?? "正在思考…")}</div> : <div className="qa-thinking">没有文本回复</div>}
+              </form> : assistant ? <ReplyTimeline message={message} active={active} statusText={props.statusText}
+                renderText={(segment) => <NoteMarkdown text={segment} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} />}
+                renderApproval={(approval) => <ApprovalCard approval={approval} onChoose={(choice) => props.onApprove(approval.id, choice)} />} />
+                : text ? <NoteMarkdown text={text} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} /> : null}
+              {assistant && !active && !text && !message.parts.some((p) => p.type === "data-activity" || p.type === "file") && <div className="qa-thinking">没有文本回复</div>}
               {changes?.type === "data-changes" && changes.data.files.length > 0 && <ChangeSummary changes={changes.data} disabled={running}
                 onOpen={props.onOpenFile} onRevert={() => props.onRevertChanges(message.id)} />}
             </MessageContent>
@@ -351,7 +332,6 @@ export function ChatPanel(props: Props) {
         {!promptChoices.length && <div className="qa-command-empty">没有匹配的 Prompt</div>}
         <button type="button" role="option" aria-selected={menuIndex === promptChoices.length} id={`${inputId}-option-${promptChoices.length}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choosePrompt(promptChoices.length)}><Plus size={15} /><span>管理自定义 Prompt…</span></button>
       </div>}
-      {running && props.statusText && waitingText === false && <div className="qa-status" role="status">{props.statusText}</div>}
       {attachmentError && <div className="qa-error" role="alert">{attachmentError}</div>}
       <PromptInput onSubmit={(event) => { event.preventDefault(); void submit(input); }} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addFiles(Array.from(e.dataTransfer.files)); } }}>
         <input type="file" multiple hidden ref={upload} onChange={(e) => { void addFiles(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ""; }} />

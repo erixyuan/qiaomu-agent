@@ -2,6 +2,7 @@ import type { ModelChoice, QiaomuSettings } from "./types";
 import { migrateProviders } from "./services/model-sources";
 import { recommendedModels } from "./services/key-detection";
 import { normalizeBranchTitle } from "./services/conversations";
+import { normalizeChatTheme } from "./services/palettes";
 import { cleanFamily } from "./services/fonts";
 
 export const DEFAULT_SYSTEM_PROMPT = `你是用户 Obsidian 知识库中的协作助手。
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: QiaomuSettings = {
   recentModels: [],
   hiddenAgents: [],
   agentVisibility: {},
+  chatTheme: "auto",
   chatFontFamily: "system",
   chatFontCustom: "",
   codeFontFamily: "system",
@@ -86,6 +88,7 @@ export function normalizeSettings(raw: unknown): QiaomuSettings {
     hiddenAgents: Array.isArray(data.hiddenAgents) ? data.hiddenAgents.filter((id): id is string => typeof id === "string") : [],
     agentVisibility: data.agentVisibility && typeof data.agentVisibility === "object" && !Array.isArray(data.agentVisibility)
       ? Object.fromEntries(Object.entries(data.agentVisibility).filter(([id, value]) => id.length > 0 && typeof value === "boolean")) : {},
+    chatTheme: normalizeChatTheme(data.chatTheme),
     chatFontFamily: data.chatFontFamily === "obsidian" || data.chatFontFamily === "text" || data.chatFontFamily === "custom" && typeof data.chatFontCustom === "string" && cleanFamily(data.chatFontCustom) ? data.chatFontFamily : "system",
     chatFontCustom: typeof data.chatFontCustom === "string" ? cleanFamily(data.chatFontCustom) : "",
     codeFontFamily: data.codeFontFamily === "obsidian" ? "obsidian" : "system",

@@ -129,6 +129,11 @@ export default class QiaomuAgentPlugin extends Plugin {
     void this.backendService?.shutdown();
   }
 
+  async saveAppearance(): Promise<void> {
+    this.eachView((view) => view.refreshPalette());
+    await this.saveData(this.settings);
+  }
+
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     notifyHomeChanged(this.app, this.manifest.id);

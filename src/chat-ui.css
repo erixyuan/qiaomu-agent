@@ -54,14 +54,44 @@
 .qiaomu-agent--react .qa-message-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .qiaomu-agent--react .qa-message-editor-actions button { min-height: 32px; padding: 4px 12px; border-radius: 9px; }
 .qiaomu-agent--react .qa-thinking, .qiaomu-agent--react .qa-status { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
-.qiaomu-agent--react .qa-activities { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
-.qiaomu-agent--react .qa-activities summary { list-style: none; display: flex; align-items: center; gap: 7px; padding-block: 7px; cursor: pointer; }
+/* A reply's work, Codex-style: quiet one-line steps in order, folded into "已处理 …" once done. */
 .qiaomu-agent--react summary::-webkit-details-marker { display: none; }
 .qiaomu-agent--react .qa-chevron { margin-left: auto; flex: 0 0 auto; }
-.qiaomu-agent--react .qa-activities[open] > summary .qa-chevron { transform: rotate(90deg); }
-.qiaomu-agent--react .qa-activity { border-radius: 8px; padding: 0 10px; margin-top: 4px; background: var(--background-secondary); }
-.qiaomu-agent--react .qa-activity summary { justify-content: space-between; }
-.qiaomu-agent--react .qa-activity pre { max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+.qiaomu-agent--react details[open] > summary > .qa-chevron { transform: rotate(90deg); }
+.qiaomu-agent--react .qa-reply-segment + .qa-reply-segment { margin-top: 10px; }
+.qiaomu-agent--react .qa-steps { display: flex; flex-direction: column; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.qiaomu-agent--react .qa-step > summary, .qiaomu-agent--react div.qa-step { list-style: none; display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 0; }
+.qiaomu-agent--react .qa-step > summary { cursor: pointer; border-radius: 6px; }
+.qiaomu-agent--react .qa-step > summary:hover { color: var(--text-normal); }
+.qiaomu-agent--react .qa-step > summary:focus-visible, .qiaomu-agent--react .qa-worked > summary:focus-visible { outline: 2px solid var(--text-normal); outline-offset: 1px; }
+.qiaomu-agent--react .qa-step .qa-chevron { opacity: 0; }
+@media (pointer: coarse) { .qiaomu-agent--react .qa-step .qa-chevron { opacity: .6; } }
+.qiaomu-agent--react .qa-step > summary:hover .qa-chevron, .qiaomu-agent--react .qa-step > summary:focus-visible .qa-chevron, .qiaomu-agent--react .qa-step[open] > summary .qa-chevron { opacity: 1; }
+.qiaomu-agent--react .qa-step-verb { flex: none; }
+.qiaomu-agent--react .qa-step-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-normal); }
+.qiaomu-agent--react code.qa-step-target { padding: 0; background: none; font-size: 12px; }
+.qiaomu-agent--react .qa-step.is-failed .qa-step-target { color: var(--text-muted); }
+.qiaomu-agent--react .qa-step-failed { flex: none; display: inline-flex; color: var(--text-error); }
+.qiaomu-agent--react .qa-step-note { flex: none; color: var(--text-faint); font-size: 12px; }
+.qiaomu-agent--react .qa-diffstat { flex: none; display: inline-flex; gap: 4px; font-family: var(--font-monospace); font-size: 12px; }
+.qiaomu-agent--react .qa-diffstat .is-added { color: var(--color-green); }
+.qiaomu-agent--react .qa-diffstat .is-removed { color: var(--color-red); }
+.qiaomu-agent--react .qa-step-detail { max-height: 240px; margin: 2px 0 8px; padding: 8px 10px; overflow: auto; border-radius: 8px; background: var(--background-secondary); color: var(--text-muted); font-size: 12px; white-space: pre; }
+.qiaomu-agent--react .qa-explore-list { margin: 0 0 4px 12px; padding-left: 10px; border-left: 1px solid var(--background-modifier-border); }
+.qiaomu-agent--react .qa-worked > summary { list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 28px; color: var(--text-muted); font-size: 13px; cursor: pointer; border-radius: 6px; }
+.qiaomu-agent--react .qa-worked > summary:hover { color: var(--text-normal); }
+.qiaomu-agent--react .qa-worked-body { margin: 4px 0 6px; padding-bottom: 12px; border-bottom: 1px solid var(--background-modifier-border); }
+.qiaomu-agent--react .qa-worked-body > div:not(.qa-steps) { color: var(--text-muted); }
+.qiaomu-agent--react .qa-plan { padding: 10px 12px; border: 1px solid var(--background-modifier-border); border-radius: 10px; font-size: 13px; }
+.qiaomu-agent--react .qa-plan-head { display: flex; justify-content: space-between; margin-bottom: 6px; font-weight: 600; }
+.qiaomu-agent--react .qa-plan-count { color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.qiaomu-agent--react .qa-plan-note { margin: 0 0 6px; color: var(--text-muted); }
+.qiaomu-agent--react .qa-plan ol { margin: 0; padding: 0; list-style: none; }
+.qiaomu-agent--react .qa-plan li { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; line-height: 1.5; }
+.qiaomu-agent--react .qa-plan li > svg, .qiaomu-agent--react .qa-plan li > .qa-working-dot { flex: none; margin-top: 3px; color: var(--text-faint); }
+.qiaomu-agent--react .qa-plan li > .qa-working-dot { margin: 7px 4px 0; }
+.qiaomu-agent--react .qa-plan li.is-completed { color: var(--text-muted); }
+.qiaomu-agent--react .qa-plan li.is-completed > span:not(.qiaomu-agent__sr-only) { text-decoration-line: line-through; }
 .qiaomu-agent--react .qa-working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
 .qiaomu-agent--react .qa-scroll-bottom { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--background-primary); border: 1px solid var(--background-modifier-border); }
 .qiaomu-agent--react .qa-composer { padding: 8px 12px 14px; position: relative; }
@@ -242,6 +272,9 @@
 @keyframes qa-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 .qiaomu-agent--react .qa-working-dot { animation: qa-pulse 1.4s ease-in-out infinite; }
 .qiaomu-agent--react .qa-thinking[role="status"] { display: flex; align-items: center; gap: 8px; }
+.qiaomu-agent--react .qa-working-tail { min-height: 22px; margin-top: 8px; color: var(--text-muted); font-size: 13px; }
+.qiaomu-agent--react .qa-working-tail.is-quiet { min-height: 0; margin: 0; }
+.qiaomu-agent--react .qa-shimmer { animation: qa-pulse 1.6s ease-in-out infinite; }
 .qiaomu-agent--react .qa-thinking[role="status"]::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: qa-pulse 1.4s ease-in-out infinite; }
 
 /* Touch: no grey flash, a pressed state instead of hover, room for the thumb. */
