@@ -186,6 +186,13 @@
   .qiaomu-agent__thinking { animation: none; }
 }
 
+/* Hide note metadata only while this plugin owns the active view; no Home dependency. */
+body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
+  [data-type="qiaomu-agent-view"]
+)) .status-bar {
+  display: none;
+}
+
 /* AI Elements' flat transcript and compound composer, scoped to the Obsidian leaf. */
 .qiaomu-agent--react { --qa-muted: var(--text-muted); --qa-chat-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif; background: var(--background-primary); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; padding: 0; font-family: var(--qa-chat-font); }
 .qiaomu-agent--react > * { min-width: 0; }
