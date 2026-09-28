@@ -72,7 +72,7 @@ export function normalizeSettings(raw: unknown): QiaomuSettings {
         modelOptions: Object.fromEntries(Object.entries(item.modelOptions ?? {}).filter(([id, value]) => typeof id === "string" && value && typeof value === "object")
           .map(([id, value]) => [id, {
             ...(typeof value.temperature === "number" && value.temperature >= 0 && value.temperature <= 2 ? { temperature: value.temperature } : {}),
-            ...(typeof value.maxOutputTokens === "number" && Number.isInteger(value.maxOutputTokens) && value.maxOutputTokens >= 1 && value.maxOutputTokens <= 65536 ? { maxOutputTokens: value.maxOutputTokens } : {}),
+            ...(typeof value.maxOutputTokens === "number" && Number.isInteger(value.maxOutputTokens) && value.maxOutputTokens >= 1 && value.maxOutputTokens <= 1_000_000 ? { maxOutputTokens: value.maxOutputTokens } : {}),
             ...(typeof value.contextWindow === "number" && Number.isInteger(value.contextWindow) && value.contextWindow >= 1 && value.contextWindow <= 100_000_000 ? { contextWindow: value.contextWindow } : {}),
             ...(typeof value.reasoning === "boolean" ? { reasoning: value.reasoning } : {}),
             ...(typeof value.vision === "boolean" ? { vision: value.vision } : {}),

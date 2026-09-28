@@ -43,7 +43,7 @@ export default class QiaomuAgentPlugin extends Plugin {
     });
     this.addSettingTab(new QiaomuSettingTab(this.app, this));
 
-    this.addRibbonIcon("sparkles", "打开乔木 Agent", () => void this.activateView());
+    this.addRibbonIcon("tree-deciduous", "打开乔木 Agent", () => void this.activateView());
     this.addCommand({
       id: "open-agent",
       name: "打开 Agent 对话",

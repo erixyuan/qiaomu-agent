@@ -55,7 +55,7 @@ export interface QiaomuSettings {
   recentModels: Array<{ source: string; model: string }>;
   /** Local agents hidden from the composer model picker. */
   hiddenAgents: string[];
-  /** Explicit composer visibility overrides. Absent entries use the seven-agent default. */
+  /** Explicit composer visibility overrides. Discovered callable agents show by default. */
   agentVisibility: Record<string, boolean>;
   chatFontFamily: "system" | "obsidian";
   chatFontSize: number;
@@ -241,6 +241,8 @@ export interface ModelChoice {
   isDefault?: boolean;
   /** Context window in tokens, when the provider reports it. */
   contextWindow?: number;
+  /** Maximum output tokens in one response, when the provider reports it. */
+  maxOutputTokens?: number;
   /** Image input, when the provider reports it. */
   vision?: boolean;
   /** Thinking support, when the provider reports it. */

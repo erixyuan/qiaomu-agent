@@ -62,7 +62,7 @@ export class ChatView extends ItemView {
   constructor(leaf: WorkspaceLeaf, readonly plugin: QiaomuAgentPlugin) { super(leaf); }
   getViewType(): string { return VIEW_TYPE_QIAOMU_AGENT; }
   getDisplayText(): string { return "乔木 Agent"; }
-  override getIcon(): string { return "sparkles"; }
+  override getIcon(): string { return "tree-deciduous"; }
   override async onOpen(): Promise<void> { await this.ensureReady(); }
 
   async ensureReady(): Promise<void> {
@@ -549,7 +549,7 @@ export class ChatView extends ItemView {
       onPickModel: (sourceKey: string, modelId: string) => this.pickModel(sourceKey, modelId),
       onLoadModels: (sourceKey: string) => void this.loadSourceModels(sourceKey),
       onManageModels: () => new ModelManagerModal(this.app, this.plugin).open(),
-      onEffort: (effort: string) => { if (this.running() || !selection) return; selection.effort = effort; this.plugin.backendService.resetSessions(this.backendOwner); void this.plugin.saveSettings(); },
+      onEffort: (effort: string) => { if (this.running() || !selection) return; selection.effort = effort; this.plugin.backendService.resetSessions(this.backendOwner); void this.plugin.saveSettings(); this.render(); },
       customPrompts: this.plugin.settings.customPrompts ?? [],
       onManagePrompts: () => new PromptManager(this.app, [...(this.plugin.settings.customPrompts ?? [])], async (prompts) => { this.plugin.settings.customPrompts = prompts; await this.plugin.saveSettings(); }).open(),
       onPickFile: (choose: (attachment: ChatAttachment) => void) => this.chooseFile(choose),
