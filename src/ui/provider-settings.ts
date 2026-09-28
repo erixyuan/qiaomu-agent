@@ -5,7 +5,7 @@ import { API_PROVIDERS, apiProtocol, permitsEmptyKey, validateApiUrl, type Provi
 import { ApiBackend } from "../services/api-backend";
 import { compactTokens, resolveModel } from "../services/model-capabilities";
 import { isChatModel, recommendedModels } from "../services/key-detection";
-import { agentShown, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, maskKey, providerHost, providerIcon, providerLabel, removeProvider, upsertProvider } from "../services/model-sources";
+import { agentShown, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, maskKey, providerHost, providerIcon, providerLabel, providerSecretId, removeProvider, upsertProvider } from "../services/model-sources";
 import { nativeTransportFor, nativeTransportLabel } from "../services/native-agent-backend";
 import { agentIconKey } from "./brand-icon";
 import { BRAND_ICONS } from "./brand-icons";
@@ -417,7 +417,7 @@ class ProviderModal extends Modal {
     this.busy = "connection"; this.error = ""; this.draw();
     try {
       const models = await listModelsFor(candidate, key);
-      const nextSecretId = this.keyDraft || changedEndpoint ? `qiaomu-agent-${provider.id}-${crypto.randomUUID()}` : provider.secretId;
+      const nextSecretId = this.keyDraft || changedEndpoint ? providerSecretId(provider.id) : provider.secretId;
       if (nextSecretId !== provider.secretId) this.app.secretStorage.setSecret(nextSecretId, key);
       await this.save({ ...candidate, secretId: nextSecretId, models, fetchedAt: Date.now() });
       if (nextSecretId !== provider.secretId) this.app.secretStorage.setSecret(provider.secretId, "");
