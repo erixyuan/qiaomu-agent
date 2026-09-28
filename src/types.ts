@@ -114,6 +114,8 @@ export interface ChatMessage {
   /** Order of text, steps and plan; absent in replies saved before steps were interleaved. */
   timeline?: TimelineEntry[];
   plan?: ChatPlan;
+  /** Questions the agent asked during the reply, with the user's answers. */
+  questions?: QuestionState[];
   finishedAt?: number;
   changes?: TurnChanges;
   /** Context window occupancy the backend reported after this reply. */
@@ -159,6 +161,34 @@ export interface ApprovalState extends ApprovalRequest {
   chosen?: string;
 }
 
+/** One question the agent asks the user mid-turn (Claude Code AskUserQuestion, Codex request_user_input). */
+export interface UserQuestion {
+  id: string;
+  /** Short topic label, a few words. */
+  header?: string;
+  question: string;
+  /** Empty: the answer is typed. */
+  options: Array<{ label: string; description?: string }>;
+  multiSelect?: boolean;
+  /** Offer a typed answer besides the options. */
+  allowOther?: boolean;
+  /** The typed answer is masked and never stored. */
+  secret?: boolean;
+}
+
+export interface QuestionRequest {
+  id: string;
+  questions: UserQuestion[];
+}
+
+/** Question id → chosen labels and/or typed text; a skipped question is absent. */
+export type QuestionAnswers = Record<string, string[]>;
+
+export interface QuestionState extends QuestionRequest {
+  status: "pending" | "answered" | "cancelled";
+  answers?: QuestionAnswers;
+}
+
 export type ChatActivityStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface EditorSelectionContext {
@@ -191,7 +221,7 @@ export interface ChatPlan {
 }
 
 /** Where a reply's pieces fell in time: text runs (by length, sliced from `content`), steps and the plan. */
-export type TimelineEntry = { text: number } | { activity: string } | { plan: true };
+export type TimelineEntry = { text: number } | { activity: string } | { plan: true } | { question: string };
 
 export interface ChatRequest {
   prompt: string;
@@ -241,6 +271,8 @@ export interface ChatCallbacks {
   onFileIntent?: (paths: Array<{ path: string; before?: string | null; patch?: string; read?: boolean }>) => void;
   /** Ask the user; resolves with the chosen option id, or null when cancelled. */
   requestApproval?: (request: ApprovalRequest) => Promise<string | null>;
+  /** Ask the user one or more questions; resolves with the answers, or null when dismissed or cancelled. */
+  requestUserInput?: (request: QuestionRequest) => Promise<QuestionAnswers | null>;
   /** Host file access for protocols that route reads/writes through the client (ACP fs). */
   host?: { readText(path: string): Promise<string>; writeText(path: string, content: string): Promise<void> };
 }

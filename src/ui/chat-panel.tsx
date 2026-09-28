@@ -2,7 +2,7 @@ import { useChat, type Chat } from "@ai-sdk/react";
 import { Component, Keymap, MarkdownRenderer, Notice, Platform, type App, type TFile } from "obsidian";
 import { Check, ChevronDown, ChevronRight, Copy, FileText, FilePlus, Folder, Link, History, Plus, SquarePen, X, CalendarPlus, FilePlus2, Slash, Paperclip, TextSelect, Sparkles, Shield, FolderPen, ShieldAlert, Pencil, GitBranch, BookOpen, Settings, TreeDeciduous, Globe, Newspaper, Shapes, Plug } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { PermissionMode, ChatAttachment, PromptTemplate } from "../types";
+import type { PermissionMode, ChatAttachment, PromptTemplate, QuestionAnswers } from "../types";
 import type { ModelSource } from "../services/model-sources";
 import { ModelPicker, type PickerSelection } from "./model-picker";
 import { BrandIcon } from "./brand-icon";
@@ -20,6 +20,7 @@ import { splitMermaid } from "../services/mermaid-content";
 import { internalLinkTarget, tidyInternalLinks } from "../services/markdown-links";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { ReplyTimeline } from "./reply-timeline";
+import { QuestionCard } from "./question-card";
 import { ComposerPopover, effortLabel } from "./composer-popover";
 import { ContextRing } from "./context-ring";
 import { conversationImages } from "../services/conversation-images";
@@ -40,7 +41,7 @@ interface Props {
   onToggleNote: () => void; onPersist: () => Promise<void>;
   editorSelection: { label: string; detail: string } | null; onDismissSelection: () => void; onComposerFocus: () => void;
   reading?: ReadingChip | null; onDismissReading?: () => void;
-  onApprove: (id: string, choice: string | null) => void; onRevertChanges: (messageId: string) => void; onOpenFile: (path: string) => void;
+  onApprove: (id: string, choice: string | null) => void; onAnswer: (id: string, answers: QuestionAnswers | null) => void; onRevertChanges: (messageId: string) => void; onOpenFile: (path: string) => void;
   efforts: string[]; effort: string; modelLoading: boolean; onEffort: (effort: string) => void;
   sources: ModelSource[]; selection: PickerSelection | null; recentModels: PickerSelection[];
   onPickModel: (source: string, model: string) => void; onLoadModels: (source: string) => void; onManageModels: () => void;
@@ -291,9 +292,10 @@ export function ChatPanel(props: Props) {
                 <div className="qa-message-editor-actions"><button type="button" onClick={() => setEditingId(null)}>取消</button><button type="submit" className="mod-cta" disabled={!editText.trim()}>发送</button></div>
               </form> : assistant ? <ReplyTimeline message={message} active={active} statusText={props.statusText}
                 renderText={(segment) => <NoteMarkdown text={segment} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} />}
-                renderApproval={(approval) => <ApprovalCard approval={approval} onChoose={(choice) => props.onApprove(approval.id, choice)} />} />
+                renderApproval={(approval) => <ApprovalCard approval={approval} onChoose={(choice) => props.onApprove(approval.id, choice)} />}
+                renderQuestion={(question) => <QuestionCard state={question} onAnswer={(answers) => props.onAnswer(question.id, answers)} />} />
                 : text ? <NoteMarkdown text={text} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} /> : null}
-              {assistant && !active && !text && !message.parts.some((p) => p.type === "data-activity" || p.type === "file") && <div className="qa-thinking">没有文本回复</div>}
+              {assistant && !active && !text && !message.parts.some((p) => p.type === "data-activity" || p.type === "data-question" || p.type === "file") && <div className="qa-thinking">没有文本回复</div>}
               {changes?.type === "data-changes" && changes.data.files.length > 0 && <ChangeSummary changes={changes.data} disabled={running}
                 onOpen={props.onOpenFile} onRevert={() => props.onRevertChanges(message.id)} />}
             </MessageContent>
