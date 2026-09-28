@@ -185,3 +185,10 @@
   .qiaomu-agent__messages { scroll-behavior: auto; }
   .qiaomu-agent__thinking { animation: none; }
 }
+
+/* Hide note metadata only while this plugin owns the active view; no Home dependency. */
+body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
+  [data-type="qiaomu-agent-view"]
+)) .status-bar {
+  display: none;
+}

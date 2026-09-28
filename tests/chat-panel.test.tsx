@@ -373,6 +373,8 @@ it("shows work in order while running, then folds it into 已处理 with the fin
   fireEvent.keyDown(input, { key: "Enter" });
   expect(await screen.findByText("正在探索…")).toBeTruthy();
   expect((container.querySelector(".qa-live-work") as HTMLDetailsElement).open).toBe(false);
+  expect(container.querySelectorAll("[role=status]")).toHaveLength(1);
+  expect(screen.queryByText("正在连接…")).toBeNull();
   expect(screen.getByText("我先找歌单。")).toBeTruthy();
   finish();
   await waitFor(() => expect(chat.status).toBe("ready"));
