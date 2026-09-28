@@ -491,8 +491,8 @@ export class NativeAgentBackend implements ChatBackend {
     if (kind === "plan") {
       const steps = arrayAt(update, "entries").map(record).flatMap((entry) => {
         const step = typeof entry?.content === "string" ? entry.content.trim() : "";
-        const status = entry?.status === "completed" ? "completed" : entry?.status === "in_progress" ? "inProgress" : "pending";
-        return step ? [{ step, status } as ChatPlan["steps"][number]] : [];
+        const status: PlanStatus = entry?.status === "completed" ? "completed" : entry?.status === "in_progress" ? "inProgress" : "pending";
+        return step ? [{ step, status }] : [];
       });
       if (steps.length) this.activeCallbacks?.onPlan?.({ steps });
       return;
@@ -701,6 +701,8 @@ function toolDetail(value: unknown): string | undefined {
   return undefined;
 }
 
+type PlanStatus = ChatPlan["steps"][number]["status"];
+
 const CODEX_LABELS: Record<string, string> = {
   commandExecution: "执行命令",
   fileChange: "修改文件",
@@ -716,7 +718,7 @@ export function codexActivityLabel(item: Record<string, unknown>, type: string):
 
 /** A Codex item as a step: its kind, a short name, and what to show when it is opened. */
 export function codexActivity(item: Record<string, unknown>, type: string): Omit<ChatActivity, "id" | "status"> {
-  const text = (key: string) => typeof item[key] === "string" ? (item[key] as string).trim() : "";
+  const text = (key: string) => { const value = item[key]; return typeof value === "string" ? value.trim() : ""; };
   if (text("title")) return { label: text("title") };
   if (type === "commandExecution" && text("command")) {
     const command = shellCommand(text("command"));
@@ -757,7 +759,7 @@ function exploreActions(value: unknown): ExploreAction[] | null {
   if (!actions.length) return null;
   const mapped: ExploreAction[] = [];
   for (const action of actions) {
-    const at = (key: string) => typeof action?.[key] === "string" ? (action[key] as string) : "";
+    const at = (key: string) => { const value = action?.[key]; return typeof value === "string" ? value : ""; };
     if (action?.type === "read") mapped.push({ type: "read", target: at("name") || at("path").split(/[\\/]/).pop() || "" });
     else if (action?.type === "search") mapped.push({ type: "search", target: at("query") || at("path") });
     else if (action?.type === "listFiles") mapped.push({ type: "list", target: at("path") || "." });
@@ -791,8 +793,8 @@ export function reasoningHeading(summary: string): string {
 function codexPlan(params: unknown): ChatPlan | null {
   const steps = arrayAt(params, "plan").map(record).flatMap((step) => {
     const text = typeof step?.step === "string" ? step.step.trim() : "";
-    const status = step?.status === "completed" || step?.status === "inProgress" ? step.status : "pending";
-    return text ? [{ step: text, status } as ChatPlan["steps"][number]] : [];
+    const status: PlanStatus = step?.status === "completed" ? "completed" : step?.status === "inProgress" ? "inProgress" : "pending";
+    return text ? [{ step: text, status }] : [];
   });
   if (!steps.length) return null;
   const explanation = stringAt(params, "explanation");

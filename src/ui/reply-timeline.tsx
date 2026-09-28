@@ -57,7 +57,7 @@ export function ReplyTimeline({ message, active, statusText, renderText, renderA
     const streaming = segments[segments.length - 1]?.kind === "text" && !statusText;
     const label = statusText || (streaming || stepRunning ? "" : "正在思考…");
     return <>{segments.map(render)}
-      <div className="qa-working-tail" role="status">{label ? <span className="qa-shimmer">{label}</span> : <span className="qiaomu-agent__sr-only">正在回复</span>}</div>
+      <div className={`qa-working-tail${label ? "" : " is-quiet"}`} role="status">{label ? <span className="qa-shimmer">{label}</span> : <span className="qiaomu-agent__sr-only">正在回复</span>}</div>
     </>;
   }
   const last = segments[segments.length - 1];
