@@ -22,7 +22,7 @@ import { PromptInput, PromptInputFooter, PromptInputHeader, PromptInputSubmit, P
 import { splitMermaid } from "../services/mermaid-content";
 import { internalLinkTarget, tidyInternalLinks } from "../services/markdown-links";
 import { MermaidDiagram } from "./mermaid-diagram";
-import { ReplyTimeline } from "./reply-timeline";
+import { ReplyTimeline, WorkingStatus } from "./reply-timeline";
 import { QuestionCard } from "./question-card";
 import { ComposerPopover, effortLabel } from "./composer-popover";
 import { ContextRing } from "./context-ring";
@@ -358,7 +358,7 @@ export function ChatPanel(props: Props) {
             </MessageActions>}
           </Message>;
         })}
-        {status === "submitted" && <div className="qa-thinking">正在连接…</div>}
+        {running && messages.at(-1)?.role !== "assistant" && <WorkingStatus />}
         {stopped && !running && <div className="qa-thinking">已停止，已保留收到的内容。</div>}
         {error && <div className="qa-error" role="alert"><p>{error.message}</p><button type="button" onClick={() => void retry()}>编辑后重试</button><button type="button" onClick={props.onConnection}>检查连接</button></div>}
       </ConversationContent>
@@ -438,7 +438,7 @@ export function ChatPanel(props: Props) {
           </ComposerPopover>}
         </PromptInputTools>
         <ComposerPopover className="qa-model-control" label="模型与推理" disabled={running}
-          trigger={<>{(() => { const source = props.sources.find((item) => item.key === props.selection?.source); return source ? <BrandIcon icon={source.icon} kind={source.kind} size={14} /> : null; })()}<span className="qa-model-name">{props.backendLabel}</span>{!!props.efforts.length && <span className="qa-effort-label">推理 {effortLabel(props.effort)}</span>}<ChevronDown size={12} /></>}>
+          trigger={<>{(() => { const source = props.sources.find((item) => item.key === props.selection?.source); return source ? <BrandIcon icon={source.icon} kind={source.kind} size={14} /> : null; })()}<span className="qa-model-name">{props.backendLabel}</span>{!!props.efforts.length && <span className="qa-effort-label">{effortLabel(props.effort)}<span className="qiaomu-agent__sr-only">推理强度</span></span>}<ChevronDown size={12} /></>}>
           {(close) => <ModelPicker sources={props.sources} current={props.selection} recent={props.recentModels}
             efforts={props.efforts} effort={props.effort} onEffort={props.onEffort}
             onSelect={(source, model) => { props.onPickModel(source, model); close(); }}

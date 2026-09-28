@@ -45,10 +45,29 @@ interface ReplyProps {
   renderQuestion: (question: QuestionState) => ReactNode;
 }
 
-/**
- * While the agent works, everything shows in order, the way Codex does; once done, the work folds into
- * "已处理 …" and only the final answer stays in view.
- */
+/** Keep the work available on demand without letting the event log fill the conversation. */
+export function WorkingGlyph() {
+  return <svg className="qa-working-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <path className="qa-orbit" d="M12 3a9 9 0 0 1 9 9M12 21a9 9 0 0 1-9-9" />
+    <path className="qa-orbit-inner" d="M7 12a5 5 0 0 1 5-5m5 5a5 5 0 0 1-5 5" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+  </svg>;
+}
+
+export function WorkingStatus({ label = "正在思考…" }: { label?: string }) {
+  return <div className="qa-live-status" role="status"><WorkingGlyph /><span>{label}</span></div>;
+}
+
+function activityLabel(step?: ChatActivity): string {
+  if (!step) return "正在思考…";
+  if (step.kind === "command") {
+    if (/\b(search|grep|rg)\b/.test(step.label)) return "正在搜索资料…";
+    if (/\b(read|cat)\b/.test(step.label)) return "正在阅读内容…";
+    return "正在执行操作…";
+  }
+  return step.kind ? `${VERBS[step.kind][0]}…` : "正在处理…";
+}
+
 export function ReplyTimeline({ message, active, statusText, renderText, renderApproval, renderQuestion }: ReplyProps) {
   const segments = replySegments(message);
   const render = (segment: ReplySegment) => segment.kind === "text" ? <div key={segment.key} className="qa-reply-segment">{renderText(segment.text, segment.key)}</div>
@@ -57,19 +76,24 @@ export function ReplyTimeline({ message, active, statusText, renderText, renderA
         : segment.kind === "question" ? <div key={segment.key} className="qa-reply-segment">{renderQuestion(segment.question)}</div>
           : <div key={segment.key} className="qa-reply-segment">{renderApproval(segment.approval)}</div>;
   if (active) {
-    const stepRunning = message.parts.some((p) => p.type === "data-activity" && p.data.status === "running");
-    const streaming = segments[segments.length - 1]?.kind === "text" && !statusText;
-    const asking = segments.some((segment) => segment.kind === "question" && segment.question.status === "pending");
-    const label = statusText || (streaming || stepRunning ? "" : "正在思考…");
-    // The open card already says what the agent is waiting for.
-    if (asking) return <>{segments.map(render)}</>;
-    return <>{segments.map(render)}
-      <div className={`qa-working-tail${label ? "" : " is-quiet"}`} role="status">{label ? <span className="qa-shimmer">{label}</span> : <span className="qiaomu-agent__sr-only">正在回复</span>}</div>
+    const steps = segments.flatMap((segment) => segment.kind === "steps" ? segment.steps : []);
+    const current = [...steps].reverse().find((step) => step.status === "running");
+    const pending = segments.filter((segment) => (segment.kind === "approval" && segment.approval.status === "pending") || (segment.kind === "question" && segment.question.status === "pending"));
+    const streaming = segments.at(-1)?.kind === "text" && !current;
+    const label = pending.length ? "等待你的确认" : current ? activityLabel(current) : streaming ? "正在回复…" : statusText && !/连接|链接|思考/.test(statusText) ? statusText : "正在思考…";
+    return <>
+      {segments.filter((segment) => segment.kind === "text" || segment.kind === "approval" || segment.kind === "question").map(render)}
+      {steps.length || segments.some((segment) => segment.kind === "plan") ? <details className="qa-live-work qa-worked qa-reply-segment">
+        <summary>{!pending.length && <WorkingGlyph />}<span className="qa-live-label" role="status">{label}</span><ChevronRight className="qa-chevron" size={14} aria-hidden="true" /></summary>
+        <div className="qa-worked-body">{segments.filter((segment) => segment.kind === "steps" || segment.kind === "plan").map(render)}</div>
+      </details> : !pending.length && <WorkingStatus label={label} />}
+      {steps.filter((step) => step.status === "failed").map((step) => <div key={`failed-${step.id}`} className="qa-step-failed" role="alert"><AlertCircle size={14} aria-hidden="true" />操作失败：{step.label}</div>)}
     </>;
   }
   const last = segments[segments.length - 1];
   const final = last?.kind === "text" ? last : undefined;
-  const work = final ? segments.slice(0, -1) : segments;
+  const pending = segments.filter((segment) => (segment.kind === "approval" && segment.approval.status === "pending") || (segment.kind === "question" && segment.question.status === "pending"));
+  const work = (final ? segments.slice(0, -1) : segments).filter((segment) => !pending.includes(segment));
   if (!work.some((segment) => segment.kind === "steps" || segment.kind === "plan")) return <>{segments.map(render)}</>;
   const { createdAt, finishedAt } = message.metadata ?? {};
   const steps = work.reduce((sum, segment) => sum + (segment.kind === "steps" ? segment.steps.length : 0), 0);
@@ -79,6 +103,8 @@ export function ReplyTimeline({ message, active, statusText, renderText, renderA
       <summary><span>{summary}</span><ChevronRight className="qa-chevron" size={14} aria-hidden="true" /></summary>
       <div className="qa-worked-body">{work.map(render)}</div>
     </details>
+    {pending.map(render)}
+    {work.flatMap((segment) => segment.kind === "steps" ? segment.steps : []).filter((step) => step.status === "failed").map((step) => <div key={`failed-${step.id}`} className="qa-step-failed" role="alert">操作失败：{step.label}</div>)}
     {final && render(final)}
   </>;
 }

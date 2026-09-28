@@ -68,6 +68,7 @@ export const BUILTIN_PROMPTS: PromptItem[] = [
   ...SCENES.flatMap((scene) => STARTER_PROMPTS[scene].map((p): PromptItem => ({ id: p.id, title: p.label, body: p.body, source: "scene", category: SCENE_NAMES[scene], scenes: [scene] }))),
   ...library.items.map((item): PromptItem => ({
     id: item.id, title: item.title, body: item.body, source: item.source === "yao" ? "yao" : "qiaomu", category: item.category,
+    ...("run" in item && item.run === "insert" ? { run: "insert" as const } : {}),
     ...("url" in item && typeof item.url === "string" ? { url: item.url } : {}),
   })),
 ];
