@@ -71,7 +71,10 @@ export interface QiaomuSettings {
   /** User supplied model IDs for agents that do not report a complete list. */
   agentCustomModels: Record<string, string[]>;
   systemPrompt: string;
-  quickPrompts: string[];
+  /** Prompt library state: which prompts are on, the strip order, usage, and the folder for the user's own. */
+  prompts: import("./services/prompt-library").PromptSettings;
+  /** Before 0.5: strip texts. Read once to move edited ones into prompt files, then removed. */
+  quickPrompts?: string[];
   autoAttachActiveNote: boolean;
   useObsidianCli: boolean;
   skillDirectories: string[];
@@ -84,6 +87,7 @@ export interface QiaomuSettings {
   activeConversation?: ConversationIdentity;
   conversations?: ConversationRecord[];
   modelSelections?: Record<string, { model: string; effort: string }>;
+  /** Before 0.5: saved templates. Moved into prompt files once, then removed. */
   customPrompts?: PromptTemplate[];
 }
 
@@ -97,6 +101,8 @@ export interface ConversationIdentity {
 export interface ConversationRecord extends ConversationIdentity {
   messages: ChatMessage[];
 }
+
+export interface SentPrompt { id: string; title: string; /** What the user added: blanks filled in or text typed alongside. */ extra?: string }
 
 export interface PromptTemplate { id: string; name: string; body: string; pinned?: boolean; }
 
@@ -115,6 +121,8 @@ export interface ChatMessage {
   timeline?: TimelineEntry[];
   plan?: ChatPlan;
   finishedAt?: number;
+  /** A user message sent from a saved prompt: shown by its title, with the full text on demand. */
+  prompt?: SentPrompt;
   changes?: TurnChanges;
   /** Context window occupancy the backend reported after this reply. */
   usage?: ContextUsage;

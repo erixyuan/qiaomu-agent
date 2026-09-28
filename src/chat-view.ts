@@ -9,7 +9,9 @@ import { Chat } from "@ai-sdk/react";
 import type QiaomuAgentPlugin from "./main";
 import type { AgentSkill, PermissionMode, ChatAttachment, ChatMessage, ChatRequest, EditorSelectionContext, GeneratedAttachment, ModelChoice } from "./types";
 import { ADD_COMMANDS, commandHotkey, type AddKind } from "./services/hotkeys";
-import { FilePicker, FolderPicker, PromptManager, AppendDialog, FullAccessDialog, WebPageDialog } from "./ui/host-dialogs";
+import { FilePicker, FolderPicker, AppendDialog, FullAccessDialog, WebPageDialog } from "./ui/host-dialogs";
+import { PromptLibraryModal } from "./ui/prompt-library-panel";
+import type { PromptItem } from "./services/prompt-library";
 import { folderAttachment, webPageAttachment, readAttachment, validateAttachments, FOLDER_NOTE_LIMIT, MAX_ATTACHMENT_BYTES } from "./services/attachments";
 import { AgentTransport, fromStoredMessage, toStoredMessage, messageText, type AgentMessage, type TurnHooks } from "./services/chat-transport";
 import { TurnChangeTracker, toVaultPath } from "./services/change-tracker";
@@ -49,6 +51,7 @@ export class ChatView extends ItemView {
   private submitVersion = 0;
   private focusVersion = 0;
   private addRequest: { kind: AddKind; version: number } = { kind: "upload", version: 0 };
+  private promptRequest: { id: string; version: number } = { id: "", version: 0 };
   private statusText = "";
   private models: ModelChoice[] = [];
   private capabilitiesKey = "";
@@ -165,6 +168,8 @@ export class ChatView extends ItemView {
   /** Focuses the composer without touching a draft the user is writing. */
   focusComposer(): void { this.focusVersion++; this.render(); }
   /** Runs a composer add action (from a command hotkey) as if chosen from the add menu. */
+  /** Runs a prompt from the command palette as if its chip had been clicked. */
+  requestPrompt(id: string): void { this.promptRequest = { id, version: this.promptRequest.version + 1 }; this.render(); }
   requestAdd(kind: AddKind): void { if (this.running()) return; this.addRequest = { kind, version: this.addRequest.version + 1 }; this.render(); }
   refreshReading(): void { if (this.root) this.render(); }
   refreshSelection(): void {
@@ -568,13 +573,11 @@ export class ChatView extends ItemView {
       onLoadModels: (sourceKey: string) => void this.loadSourceModels(sourceKey),
       onManageModels: () => new ModelManagerModal(this.app, this.plugin).open(),
       onEffort: (effort: string) => { if (this.running() || !selection) return; selection.effort = effort; this.plugin.backendService.resetSessions(this.backendOwner); void this.plugin.saveSettings(); this.render(); },
-      customPrompts: this.plugin.settings.customPrompts ?? [],
-      onManagePrompts: (draft?: string) => new PromptManager(this.app, [...(this.plugin.settings.customPrompts ?? [])], async (prompts) => {
-        const previous = this.plugin.settings.customPrompts;
-        this.plugin.settings.customPrompts = prompts;
-        try { await this.plugin.saveSettings(); this.render(); }
-        catch (error) { this.plugin.settings.customPrompts = previous; throw error; }
-      }, draft).open(),
+      promptCatalog: this.plugin.promptCatalog(), promptSettings: this.plugin.settings.prompts, promptRequest: this.promptRequest,
+      onManagePrompts: (draft?: string) => new PromptLibraryModal(this.app, this.plugin.promptHost(), draft === undefined ? {} : { draft }).open(),
+      onEditPrompt: (item: PromptItem) => new PromptLibraryModal(this.app, this.plugin.promptHost(), { item }).open(),
+      onPromptUsed: (id: string) => void this.plugin.recordPromptUse(id),
+      onTogglePromptPin: (item: PromptItem) => void this.plugin.togglePromptPin(item),
       onPickFile: (choose: (attachment: ChatAttachment) => void) => this.chooseFile(choose),
       onPickFolder: (choose: (attachment: ChatAttachment) => void) => this.chooseFolder(choose),
       onPickWebPage: getRuntimeRequire() ? (choose: (attachment: ChatAttachment) => void) => this.chooseWebPage(choose) : undefined,
@@ -589,7 +592,7 @@ export class ChatView extends ItemView {
       },
       onAppend: (text: string, daily: boolean) => void this.append(text, daily),
       permission, fileAccessAvailable: true, fullAccessAvailable, note: this.attachNote ? file : null, detachedNote: this.attachNote ? null : file,
-      statusText: this.statusText, prompts: this.plugin.settings.quickPrompts,
+      statusText: this.statusText,
       prefill: this.prefill, prefillVersion: this.prefillVersion, submitVersion: this.submitVersion, focusVersion: this.focusVersion, addRequest: this.addRequest,
       addHotkeys: Object.fromEntries(Object.entries(ADD_COMMANDS).map(([kind, command]) => [kind, commandHotkey(this.app, this.plugin.manifest.id, command.id, Platform.isMacOS)])) as Record<AddKind, string>,
       onConnection: () => this.openConnection(), onNew: () => this.newConversation(), onOpenSettings: () => this.openSettings(),

@@ -3,6 +3,7 @@ import { migrateProviders } from "./services/model-sources";
 import { recommendedModels } from "./services/key-detection";
 import { normalizeBranchTitle } from "./services/conversations";
 import { normalizeChatTheme } from "./services/palettes";
+import { DEFAULT_PROMPT_SETTINGS, normalizePromptSettings } from "./services/prompt-library";
 import { cleanFamily } from "./services/fonts";
 
 export const DEFAULT_SYSTEM_PROMPT = `你是用户 Obsidian 知识库中的协作助手。
@@ -26,7 +27,7 @@ export const DEFAULT_SETTINGS: QiaomuSettings = {
     secretId: "qiaomu-agent-api-key",
   },
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  quickPrompts: ["总结当前笔记", "找出相关笔记", "把这段内容整理得更清楚"],
+  prompts: DEFAULT_PROMPT_SETTINGS,
   autoAttachActiveNote: true,
   useObsidianCli: true,
   skillDirectories: [],
@@ -59,6 +60,7 @@ export function normalizeSettings(raw: unknown): QiaomuSettings {
     ...data,
     schemaVersion: 1,
     permissionMode: data.permissionMode === "edit" || data.permissionMode === "full" ? data.permissionMode : "plan",
+    prompts: normalizePromptSettings(data.prompts),
     customPrompts: Array.isArray(data.customPrompts) ? data.customPrompts.filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && typeof p.body === "string")
       .map((p) => ({ id: p.id, name: p.name, body: p.body, pinned: p.pinned === true })) : [],
     activeConversation: data.activeConversation && typeof data.activeConversation.id === "string" && typeof data.activeConversation.title === "string"
@@ -97,9 +99,7 @@ export function normalizeSettings(raw: unknown): QiaomuSettings {
     agentModelCache: normalizeModelCache(data.agentModelCache),
     agentEnabledModels: { pi: [""], ...normalizeAgentIds(data.agentEnabledModels) },
     agentCustomModels: normalizeAgentIds(data.agentCustomModels, false),
-    quickPrompts: Array.isArray(data.quickPrompts)
-      ? data.quickPrompts.filter((item): item is string => typeof item === "string").slice(0, 8)
-      : [...DEFAULT_SETTINGS.quickPrompts],
+    ...(Array.isArray(data.quickPrompts) ? { quickPrompts: data.quickPrompts.filter((item): item is string => typeof item === "string").slice(0, 8) } : {}),
     skillDirectories: Array.isArray(data.skillDirectories)
       ? data.skillDirectories.filter((item): item is string => typeof item === "string")
       : [],

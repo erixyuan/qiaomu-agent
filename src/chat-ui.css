@@ -95,11 +95,51 @@
 .qiaomu-agent--react .qa-working-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
 .qiaomu-agent--react .qa-scroll-bottom { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: var(--background-primary); border: 1px solid var(--background-modifier-border); }
 .qiaomu-agent--react .qa-composer { padding: 8px 12px 14px; position: relative; }
-.qiaomu-agent--react .qa-prompt-strip { display: flex; align-items: center; gap: 6px; overflow-x: auto; margin-bottom: 8px; scrollbar-width: thin; }
-.qiaomu-agent--react .qa-prompt-strip button { flex: none; min-height: 30px; max-width: 170px; overflow: hidden; padding: 4px 10px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; box-shadow: none; }
-.qiaomu-agent--react .qa-prompt-strip button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
-.qiaomu-agent--react .qa-prompt-strip button:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
-.qiaomu-agent--react .qa-prompt-strip .qa-prompt-strip-manage { display: inline-flex; align-items: center; justify-content: center; width: 30px; padding: 0; }
+.qiaomu-agent--react .qa-prompt-strip { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.qiaomu-agent--react .qa-prompt-chips { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.qiaomu-agent--react .qa-prompt-chips button { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 30px; max-width: 170px; padding: 4px 10px; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); font-size: 12px; white-space: nowrap; box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-chips button > span { overflow: hidden; text-overflow: ellipsis; }
+.qiaomu-agent--react .qa-prompt-chips button.is-pinned { color: var(--text-normal); }
+.qiaomu-agent--react .qa-prompt-chips button > svg { flex: none; color: var(--text-faint); }
+.qiaomu-agent--react .qa-prompt-chips button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-chips button:focus-visible, .qiaomu-agent--react .qa-prompt-more .qa-control-trigger:focus-visible { outline: 2px solid var(--text-normal); outline-offset: -2px; }
+.qiaomu-agent--react .qa-prompt-chips button:disabled { opacity: .5; }
+.qiaomu-agent--react .qa-prompt-more .qa-control-trigger { display: inline-flex; align-items: center; justify-content: center; width: 30px; min-height: 30px; padding: 0; border: 1px solid var(--background-modifier-border); border-radius: 999px; background: transparent; color: var(--text-muted); box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-more .qa-control-trigger:hover, .qiaomu-agent--react .qa-prompt-more .qa-control-trigger[aria-expanded="true"] { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-more .qa-control-popover { bottom: calc(100% - 4px); left: 12px; right: 12px; width: auto; max-height: min(420px, 60dvh); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.qiaomu-agent--react .qa-prompt-picker { display: flex; flex-direction: column; min-height: 0; }
+.qiaomu-agent--react .qa-prompt-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--background-modifier-border); color: var(--text-muted); }
+.qiaomu-agent--react .qa-prompt-search input { flex: 1; min-width: 0; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 13px; }
+.qiaomu-agent--react .qa-prompt-search input:focus { box-shadow: none; }
+.qiaomu-agent--react .qa-prompt-search:focus-within { color: var(--text-normal); }
+.qiaomu-agent--react .qa-prompt-list { flex: 1; min-height: 0; max-height: min(320px, 45dvh); overflow: auto; overscroll-behavior: contain; padding: 4px 6px 6px; }
+.qiaomu-agent--react .qa-prompt-list button { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 34px; padding: 6px 8px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--text-normal); font-size: 13px; text-align: left; }
+.qiaomu-agent--react .qa-prompt-list button[aria-selected="true"] { background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-prompt-list button > svg { flex: none; margin-left: auto; color: var(--text-faint); }
+.qiaomu-agent--react .qa-prompt-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qiaomu-agent--react .qa-prompt-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 12px; border-top: 1px solid var(--background-modifier-border); color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-picker-foot button { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-prompt-picker-foot button:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.qiaomu-agent--react .qa-command-hint { padding: 6px 8px 2px; color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-form { margin-bottom: 8px; padding: 10px 12px 12px; border: 1px solid var(--background-modifier-border); border-radius: 14px; background: var(--background-secondary); }
+.qiaomu-agent--react .qa-prompt-form-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.qiaomu-agent--react .qa-prompt-form-head button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--text-muted); }
+.qiaomu-agent--react .qa-prompt-field { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.qiaomu-agent--react .qa-prompt-field label { color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-prompt-field textarea, .qiaomu-agent--react .qa-prompt-field select { width: 100%; min-height: 34px; padding: 6px 10px; border: 1px solid var(--background-modifier-border); border-radius: 9px; background: var(--background-primary); font-size: 13px; line-height: 1.5; resize: none; }
+.qiaomu-agent--react .qa-prompt-field textarea:focus-visible, .qiaomu-agent--react .qa-prompt-field select:focus-visible { border-color: var(--text-muted); box-shadow: none; outline: none; }
+.qiaomu-agent--react .qa-prompt-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--text-faint); font-size: 11px; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send { flex: none; min-height: 30px; padding: 4px 14px; border: 0; border-radius: 9px; background: var(--text-normal); box-shadow: none; color: var(--background-primary); font-weight: 500; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send:hover { opacity: .88; }
+.qiaomu-agent--react .qa-prompt-form-actions button.qa-prompt-form-send:focus-visible { outline: 2px solid var(--text-normal); outline-offset: 2px; }
+.qiaomu-agent--react .qa-prompt-form-actions > span, .qiaomu-agent--react .qa-prompt-picker-foot > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qiaomu-agent--react .qa-prompt-picker-foot button { flex: none; }
+.qiaomu-agent--react .qa-sent-prompt-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.qiaomu-agent--react .qa-sent-prompt-title svg { color: var(--text-muted); }
+.qiaomu-agent--react .qa-sent-prompt-extra { margin: 6px 0 0; white-space: pre-wrap; }
+.qiaomu-agent--react .qa-sent-prompt details { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+.qiaomu-agent--react .qa-sent-prompt summary { cursor: pointer; }
+.qiaomu-agent--react .qa-sent-prompt-body { max-height: 240px; margin-top: 6px; overflow: auto; white-space: pre-wrap; }
 .qiaomu-agent--react .qa-command-group { padding: 10px 8px 4px; color: var(--text-faint); font-size: 11px; font-weight: 500; }
 .qiaomu-agent--react .qa-command-group:first-child { padding-top: 4px; }
 .qiaomu-agent--react .qa-command-empty { padding: 9px; color: var(--text-muted); font-size: 13px; }
@@ -280,9 +320,9 @@
 /* Touch: no grey flash, a pressed state instead of hover, room for the thumb. */
 @media (pointer: coarse) {
   .qiaomu-agent--react button { -webkit-tap-highlight-color: transparent; }
-  .qiaomu-agent--react :is(.qa-suggestions button, .qa-command-menu button, .qa-prompt-strip button, .qa-message-actions button, .qa-header button, .qa-add-menu button):active { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
-  .qiaomu-agent--react .qa-prompt-strip { scrollbar-width: none; }
-  .qiaomu-agent--react .qa-prompt-strip::-webkit-scrollbar { display: none; }
+  .qiaomu-agent--react :is(.qa-suggestions button, .qa-command-menu button, .qa-prompt-chips button, .qa-prompt-list button, .qa-message-actions button, .qa-header button, .qa-add-menu button):active { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); }
+  .qiaomu-agent--react .qa-prompt-chips { scrollbar-width: none; }
+  .qiaomu-agent--react .qa-prompt-chips::-webkit-scrollbar { display: none; }
 }
 .is-mobile .qiaomu-agent--react .qa-empty { padding-top: 8px; }
 .is-mobile .qiaomu-agent--react .qa-suggestions button { min-height: 46px; padding-block: 11px; font-size: 15px; }

@@ -2,14 +2,17 @@ import { useChat, type Chat } from "@ai-sdk/react";
 import { Component, Keymap, MarkdownRenderer, Notice, Platform, type App, type TFile } from "obsidian";
 import { Check, ChevronDown, ChevronRight, Copy, FileText, FilePlus, Folder, Link, History, Plus, SquarePen, X, CalendarPlus, FilePlus2, Slash, Paperclip, TextSelect, Sparkles, Shield, FolderPen, ShieldAlert, Pencil, GitBranch, BookOpen, Settings, TreeDeciduous, Globe, Newspaper, Shapes, Plug } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { PermissionMode, ChatAttachment, PromptTemplate } from "../types";
+import type { PermissionMode, ChatAttachment, SentPrompt } from "../types";
 import type { ModelSource } from "../services/model-sources";
 import { ModelPicker, type PickerSelection } from "./model-picker";
 import { BrandIcon } from "./brand-icon";
 import { ApprovalCard, ChangeSummary } from "./turn-review";
 import { readAttachment, MAX_ATTACHMENTS } from "../services/attachments";
 import { slashQuery, startsFileMention } from "../services/composer";
-import { SCENE_NAMES, STARTER_PROMPTS, starterGroups, starterScene, type StarterScene } from "../services/starter-prompts";
+import { starterScene, type StarterScene } from "../services/starter-prompts";
+import { stripPrompts, type PromptItem, type PromptSettings } from "../services/prompt-library";
+import { fillPrompt, promptFields, usesClipboard, type PromptContext, type PromptField } from "../services/prompt-template";
+import { PromptForm, PromptStrip, promptGroups, type PromptActions } from "./prompt-strip";
 import type { AddKind } from "../services/hotkeys";
 import { Attachments } from "../components/ai-elements/attachments";
 import { type AgentMessage, messageText, messageUsage } from "../services/chat-transport";
@@ -32,7 +35,7 @@ interface Props {
   onOpenParent: (id: string) => void; onForkMessage: (messageId: string) => void;
   imageTargetNote: TFile | null;
   backendLabel: string; skillLabel: string; permission: PermissionMode; fileAccessAvailable: boolean; fullAccessAvailable: boolean; note: TFile | null; detachedNote?: TFile | null;
-  statusText: string; prompts: string[]; prefill: string; prefillVersion: number; submitVersion?: number; focusVersion?: number;
+  statusText: string; prefill: string; prefillVersion: number; submitVersion?: number; focusVersion?: number;
   addRequest?: { kind: AddKind; version: number }; addHotkeys?: Partial<Record<AddKind, string>>;
   onConnection: () => void; onNew: () => void; onOpenSettings: () => void; onHistory: (event: MouseEvent) => void;
   onSkill: (event: MouseEvent) => void; onPermission: (mode: PermissionMode) => void;
@@ -44,7 +47,10 @@ interface Props {
   efforts: string[]; effort: string; modelLoading: boolean; onEffort: (effort: string) => void;
   sources: ModelSource[]; selection: PickerSelection | null; recentModels: PickerSelection[];
   onPickModel: (source: string, model: string) => void; onLoadModels: (source: string) => void; onManageModels: () => void;
-  customPrompts: PromptTemplate[]; onManagePrompts: (draft?: string) => void;
+  promptCatalog: PromptItem[]; promptSettings: PromptSettings; onManagePrompts: (draft?: string) => void;
+  onPromptUsed: (id: string) => void; onEditPrompt: (item: PromptItem) => void; onTogglePromptPin: (item: PromptItem) => void;
+  /** Runs a prompt chosen outside the panel (command palette); each new version runs once. */
+  promptRequest?: { id: string; version: number };
   onPickFile: (choose: (attachment: ChatAttachment) => void) => void;
   onPickFolder: (choose: (attachment: ChatAttachment) => void) => void;
   /** Absent where pages cannot be read (mobile). */
@@ -129,11 +135,10 @@ export function ChatPanel(props: Props) {
   const contextUsage = latestUsage(messages);
   const query = slashQuery(input);
   const scene = starterScene({ selection: Boolean(props.editorSelection), reading: Boolean(props.reading), noteName: props.note?.basename });
-  // Own prompts first, then the built-in library for what is on screen; a query searches all of it.
-  const promptChoices = [
-    ...[...props.prompts.map((body, i) => ({ id: `quick-${i}`, name: body, body })), ...props.customPrompts].map((p) => ({ ...p, group: "我的 Prompt" })),
-    ...starterGroups(scene, Boolean(query)).flatMap((group) => STARTER_PROMPTS[group].map((p) => ({ id: p.id, name: p.label, body: p.body, group: SCENE_NAMES[group] }))),
-  ].filter((p) => !query || `${p.name} ${p.body}`.toLocaleLowerCase().includes(query));
+  // Enabled prompts, pinned and fitting ones first; a query searches all of them.
+  const promptChoices = query === null ? [] : promptGroups(props.promptCatalog, props.promptSettings, scene, query)
+    .flatMap((group) => group.items.map((item) => ({ ...item, group: group.name })));
+  const [promptForm, setPromptForm] = useState<{ item: PromptItem; fields: PromptField[]; values: Record<string, string>; context: PromptContext; draft: string } | null>(null);
   const menuOpen = query !== null && !menuDismissed;
   const imageEditing = attachments.some((file) => file.intent === "edit");
   const permissionLabel = imageEditing ? "图片编辑只读" : props.permission === "full" ? "完全访问" : props.permission === "edit" ? "可写当前库" : "只读";
@@ -144,15 +149,53 @@ export function ChatPanel(props: Props) {
     setInput(draft ? `${draft.trimEnd()}\n\n${body}` : body);
     setMenuDismissed(true); textarea.current?.focus();
   };
-  const choosePrompt = (index: number) => {
+  const choosePrompt = (index: number, insert = false) => {
     const prompt = promptChoices[index];
-    if (prompt) insertPrompt(prompt.body); else {
-      const draft = draftBeforePrompts.current;
-      draftBeforePrompts.current = null;
-      setInput(draft ?? ""); props.onManagePrompts();
-    }
-    setMenuDismissed(true); textarea.current?.focus();
+    const draft = draftBeforePrompts.current;
+    draftBeforePrompts.current = null;
+    setMenuDismissed(true);
+    if (prompt && insert) { setInput(draft ?? ""); insertFilled(prompt, draft ?? ""); return; }
+    setInput(draft ?? "");
+    if (prompt) void runPrompt(prompt, draft ?? ""); else { props.onManagePrompts(); textarea.current?.focus(); }
   };
+  const promptContext = async (item: PromptItem): Promise<PromptContext> => ({
+    selection: props.editorSelection?.detail, note: props.note?.basename, reading: props.reading?.label,
+    ...(usesClipboard(item.body) ? { clipboard: await navigator.clipboard.readText().catch(() => "") } : {}),
+  });
+  // Context placeholders are resolved; blanks stay as 「名称」 for the user to fill in before sending.
+  const insertFilled = (item: PromptItem, draft: string) => {
+    void promptContext(item).then((context) => {
+      const blanks = Object.fromEntries(promptFields(item.body, context).map((field) => [field.name, `「${field.name}」`]));
+      draftBeforePrompts.current = draft || null;
+      insertPrompt(fillPrompt(item.body, blanks, context));
+    });
+  };
+  /** One click runs a prompt: straight away, or after the blanks it needs. What is typed in the composer goes along. */
+  const runPrompt = async (item: PromptItem, draft = slashQuery(input) === null ? input : "") => {
+    if (item.run === "insert") { insertFilled(item, draft); return; }
+    if (running) { new Notice("等这条回复结束后再运行 Prompt"); return; }
+    const context = await promptContext(item);
+    const fields = promptFields(item.body, context);
+    if (!fields.length) { void sendPrompt(item, {}, context, draft); return; }
+    // Typed text fills the first blank that has no default, like a Raycast argument.
+    const target = draft.trim() ? fields.find((field) => !field.defaultValue && !field.options) : undefined;
+    setPromptForm({ item, fields, context, values: target ? { [target.name]: draft.trim() } : {}, draft: target ? "" : draft });
+  };
+  const sendPrompt = async (item: PromptItem, values: Record<string, string>, context: PromptContext, draft: string) => {
+    const extra = [...Object.entries(values).filter(([, value]) => value.trim()).map(([name, value]) => `${name}：${value.trim()}`), draft.trim()].filter(Boolean).join("\n");
+    const text = [fillPrompt(item.body, values, context), draft.trim()].filter(Boolean).join("\n\n");
+    setPromptForm(null);
+    props.onPromptUsed(item.id);
+    await submit(text, { id: item.id, title: item.title, ...(extra ? { extra } : {}) });
+  };
+  const promptActions: PromptActions = {
+    run: (item) => void runPrompt(item), insert: (item) => insertFilled(item, slashQuery(input) === null ? input : ""),
+    edit: props.onEditPrompt, togglePin: props.onTogglePromptPin, manage: () => props.onManagePrompts(),
+  };
+  useEffect(() => {
+    const item = props.promptRequest && props.promptCatalog.find((prompt) => prompt.id === props.promptRequest!.id);
+    if (item) void runPrompt(item);
+  }, [props.promptRequest?.version]);
   const addAttachment = (file: ChatAttachment) => {
     if (!mounted.current) return;
     setAttachments((current) => {
@@ -191,13 +234,13 @@ export function ChatPanel(props: Props) {
     if (el) { el.style.removeProperty("height"); el.style.setProperty("height", `${Math.min(el.scrollHeight, 180)}px`); }
   }, [input]);
 
-  const submit = async (text: string) => {
+  const submit = async (text: string, prompt?: SentPrompt) => {
     if ((!text.trim() && !attachments.length) || reading || running || locked.current) return;
     if (imageEditing && !text.trim()) { setAttachmentError("请描述希望如何修改图片"); textarea.current?.focus(); return; }
     try { props.onValidateAttachments(attachments); } catch (e) { setAttachmentError(e instanceof Error ? e.message : String(e)); return; }
     locked.current = true; clearError(); setStopped(false); setInput("");
     const sent = attachments; setAttachments([]); setAttachmentError("");
-    try { await sendMessage({ text: text.trim() || "请分析这些附件。", metadata: { createdAt: Date.now(), sourcePath: props.note?.path, attachments: sent } }); }
+    try { await sendMessage({ text: text.trim() || "请分析这些附件。", metadata: { createdAt: Date.now(), sourcePath: props.note?.path, attachments: sent, ...(prompt ? { prompt } : {}) } }); }
     finally { locked.current = false; await props.onPersist(); }
   };
   // Qiaomu Home sends a question the user already submitted there; runs once per request, after the draft is set.
@@ -269,8 +312,8 @@ export function ChatPanel(props: Props) {
         event.preventDefault(); showConversationImageMenu(props.app, imageFromElement(image, 0), event.nativeEvent, props.imageTargetNote, addReferenceImage);
       }}>
         {!messages.length && <EmptyState scene={scene} noModel={!props.sources.length} onConnect={props.onManageModels}
-          pinned={props.customPrompts.filter((p) => p.pinned).map((p) => ({ id: p.id, label: p.name, body: p.body }))}
-          onPick={(body) => insertPrompt(body)} />}
+          prompts={stripPrompts(props.promptCatalog, props.promptSettings, scene).slice(0, 4)}
+          onPick={(item) => void runPrompt(item)} />}
         {messages.filter((m) => m.role !== "system").map((message, index, visible) => {
           const text = messageText(message);
           const latest = index === visible.length - 1;
@@ -292,6 +335,7 @@ export function ChatPanel(props: Props) {
               </form> : assistant ? <ReplyTimeline message={message} active={active} statusText={props.statusText}
                 renderText={(segment) => <NoteMarkdown text={segment} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} />}
                 renderApproval={(approval) => <ApprovalCard approval={approval} onChoose={(choice) => props.onApprove(approval.id, choice)} />} />
+                : message.metadata?.prompt ? <SentPromptView prompt={message.metadata.prompt} text={text} />
                 : text ? <NoteMarkdown text={text} sourcePath={message.metadata?.sourcePath ?? ""} app={props.app} parent={props.parent} /> : null}
               {assistant && !active && !text && !message.parts.some((p) => p.type === "data-activity" || p.type === "file") && <div className="qa-thinking">没有文本回复</div>}
               {changes?.type === "data-changes" && changes.data.files.length > 0 && <ChangeSummary changes={changes.data} disabled={running}
@@ -319,20 +363,19 @@ export function ChatPanel(props: Props) {
       <ConversationScrollButton />
     </Conversation>
     <div className="qa-composer">
-      {messages.length > 0 && <div className="qa-prompt-strip" role="group" aria-labelledby={`${inputId}-quick-label`}>
-        <span id={`${inputId}-quick-label`} className="qiaomu-agent__sr-only">常用 Prompt</span>
-        {[...props.customPrompts.filter((p) => p.pinned).map((p) => ({ id: p.id, name: p.name, body: p.body })),
-          ...props.prompts.slice(0, 3).map((body, index) => ({ id: `quick-${index}`, name: body, body }))].slice(0, 5)
-          .map((prompt) => <button key={prompt.id} type="button" onClick={() => insertPrompt(prompt.body)}>{prompt.name}</button>)}
-        <button type="button" className="qa-prompt-strip-manage" onClick={() => props.onManagePrompts()} aria-label="管理 Prompt 库"><Plus size={14} /></button>
-      </div>}
+      {messages.length > 0 && !promptForm && <PromptStrip catalog={props.promptCatalog} settings={props.promptSettings} scene={scene} disabled={running} actions={promptActions} />}
       {menuOpen && <div className="qa-command-menu" id={`${inputId}-menu`} role="listbox" aria-labelledby={`${inputId}-menu-label`}>
         <span id={`${inputId}-menu-label`} className="qiaomu-agent__sr-only">Prompt 菜单</span>
-        {promptChoices.map((p, index) => [p.group !== promptChoices[index - 1]?.group && <div key={`group-${p.group}`} className="qa-command-group" aria-hidden="true">{p.group}</div>, <button type="button" role="option" aria-selected={index === menuIndex} id={`${inputId}-option-${index}`} key={p.id} onMouseDown={(e) => e.preventDefault()} onClick={() => choosePrompt(index)}><Slash size={15} /><span>{p.name}</span></button>])}
+        {promptChoices.map((p, index) => [p.group !== promptChoices[index - 1]?.group && <div key={`group-${p.group}`} className="qa-command-group" aria-hidden="true">{p.group}</div>, <button type="button" role="option" aria-selected={index === menuIndex} id={`${inputId}-option-${index}`} key={p.id} onMouseDown={(e) => e.preventDefault()} onClick={(event) => choosePrompt(index, event.shiftKey)}><Slash size={15} /><span>{p.title}</span></button>])}
         {!promptChoices.length && <div className="qa-command-empty">没有匹配的 Prompt</div>}
-        <button type="button" role="option" aria-selected={menuIndex === promptChoices.length} id={`${inputId}-option-${promptChoices.length}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choosePrompt(promptChoices.length)}><Plus size={15} /><span>管理自定义 Prompt…</span></button>
+        <button type="button" role="option" aria-selected={menuIndex === promptChoices.length} id={`${inputId}-option-${promptChoices.length}`} onMouseDown={(e) => e.preventDefault()} onClick={() => choosePrompt(promptChoices.length)}><Plus size={15} /><span>管理 Prompt 库…</span></button>
+        {!Platform.isMobile && <div className="qa-command-hint" aria-hidden="true">↵ 发送 · ⇧↵ 填入输入框</div>}
       </div>}
       {attachmentError && <div className="qa-error" role="alert">{attachmentError}</div>}
+      {promptForm && <PromptForm item={promptForm.item} fields={promptForm.fields} values={promptForm.values}
+        onChange={(name, value) => setPromptForm((form) => form && { ...form, values: { ...form.values, [name]: value } })}
+        onCancel={() => { setPromptForm(null); textarea.current?.focus(); }}
+        onSubmit={() => { if (!running) void sendPrompt(promptForm.item, promptForm.values, promptForm.context, promptForm.draft); }} />}
       <PromptInput onSubmit={(event) => { event.preventDefault(); void submit(input); }} onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); void addFiles(Array.from(e.dataTransfer.files)); } }}>
         <input type="file" multiple hidden ref={upload} onChange={(e) => { void addFiles(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ""; }} />
         <Attachments files={attachments} onRemove={(id) => setAttachments((current) => current.filter((a) => a.id !== id))} />
@@ -354,7 +397,7 @@ export function ChatPanel(props: Props) {
               e.preventDefault(); setMenuDismissed(true);
               if (draftBeforePrompts.current !== null) { setInput(draftBeforePrompts.current); draftBeforePrompts.current = null; }
             }
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); choosePrompt(menuIndex); }
+            if (e.key === "Enter") { e.preventDefault(); choosePrompt(menuIndex, e.shiftKey); }
           }}
           onChange={(event) => {
             const value = event.currentTarget.value; const cursor = event.currentTarget.selectionStart;
@@ -421,6 +464,15 @@ function AddKey({ keys }: { keys?: string }) {
   return keys ? <kbd className="qa-add-key" aria-hidden="true">{keys}</kbd> : null;
 }
 
+/** A message sent from a saved prompt: its title and what the user added; the full text folds away. */
+function SentPromptView({ prompt, text }: { prompt: SentPrompt; text: string }) {
+  return <div className="qa-sent-prompt">
+    <div className="qa-sent-prompt-title"><Sparkles size={13} aria-hidden="true" /><span>{prompt.title}</span></div>
+    {prompt.extra && <p className="qa-sent-prompt-extra">{prompt.extra}</p>}
+    <details><summary>完整 Prompt</summary><div className="qa-sent-prompt-body">{text}</div></details>
+  </div>;
+}
+
 /** Reading context from another plugin or view, shown as a removable composer chip. */
 export interface ReadingChip { label: string; detail: string; kind: "article" | "book" | "document" | "page" | "other"; selected: boolean }
 
@@ -445,7 +497,7 @@ const SUBTITLES: Record<StarterScene, string> = {
 
 /** The first screen of a conversation: what will be sent along, and a few prompts that fit it. */
 function EmptyState(props: { scene: StarterScene; noModel: boolean; onConnect: () => void;
-  pinned: { id: string; label: string; body: string }[]; onPick: (body: string) => void }) {
+  prompts: PromptItem[]; onPick: (item: PromptItem) => void }) {
   const labelId = useId();
   if (props.noModel) return <div className="qa-empty">
     <h3>先连接一个模型</h3>
@@ -453,14 +505,13 @@ function EmptyState(props: { scene: StarterScene; noModel: boolean; onConnect: (
     <button type="button" className="qa-empty-connect" onClick={props.onConnect}><Plug size={15} /><span>连接模型</span></button>
   </div>;
   const heading = { selection: "针对选中的文字", reading: "边读边聊", daily: "今天过得怎么样", note: "围绕这篇笔记", vault: "从一个想法开始" }[props.scene];
-  const prompts = [...props.pinned, ...STARTER_PROMPTS[props.scene]].slice(0, 4);
   return <div className="qa-empty">
     <h3>{heading}</h3>
     <p>{SUBTITLES[props.scene]}</p>
     <div className="qa-suggestions" role="group" aria-labelledby={labelId}>
       <span id={labelId} className="qiaomu-agent__sr-only">可以这样开始</span>
-      {prompts.map((prompt) => <button key={prompt.id} type="button" onClick={() => props.onPick(prompt.body)}>
-        {prompt.label}</button>)}
+      {props.prompts.map((prompt) => <button key={prompt.id} type="button" onClick={() => props.onPick(prompt)}>
+        {prompt.title}</button>)}
     </div>
     {!Platform.isMobile && <p className="qa-empty-keys"><span><kbd>/</kbd>更多 Prompt</span><span><kbd>@</kbd>引用文件</span><span><kbd>⇧</kbd><kbd>↵</kbd>换行</span></p>}
   </div>;

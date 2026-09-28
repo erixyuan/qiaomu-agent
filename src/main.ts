@@ -1,4 +1,4 @@
-import { MarkdownView, Menu, Notice, Platform, Plugin, TFile, WorkspaceLeaf, type Editor, type MarkdownFileInfo } from "obsidian";
+import { FuzzySuggestModal, MarkdownView, Menu, Notice, Platform, Plugin, TFile, WorkspaceLeaf, type Editor, type MarkdownFileInfo } from "obsidian";
 import { ChatView, VIEW_TYPE_QIAOMU_AGENT } from "./chat-view";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./defaults";
 import { BackendService } from "./services/backend-service";
@@ -15,6 +15,9 @@ import { createAgentApi } from "./integrations/agent-api";
 import { createHomeProvider } from "./integrations/home";
 import { notifyHomeChanged, type HomeProvider } from "./integrations/qiaomu-home";
 import type { AgentApi } from "./integrations/qiaomu-context";
+import { PromptStore } from "./services/prompt-store";
+import { byUsage, isEnabled, legacyPrompts, promptCatalog, SOURCE_NAMES, type PromptItem } from "./services/prompt-library";
+import type { PromptHost } from "./ui/prompt-library-panel";
 
 export default class QiaomuAgentPlugin extends Plugin {
   override settings: QiaomuSettings = { ...DEFAULT_SETTINGS, api: { ...DEFAULT_SETTINGS.api } };
@@ -27,6 +30,9 @@ export default class QiaomuAgentPlugin extends Plugin {
   api!: AgentApi;
   /** Recent conversations and a "new conversation" action on Qiaomu Home (see integrations/qiaomu-home.ts). */
   qiaomuHome?: HomeProvider;
+  /** The user's prompts, as Markdown files in the prompt folder. */
+  promptStore!: PromptStore;
+  private readonly promptCommands = new Set<string>();
 
   override async onload(): Promise<void> {
     this.settings = normalizeSettings(await this.loadData());
@@ -38,6 +44,9 @@ export default class QiaomuAgentPlugin extends Plugin {
     this.backendService = new BackendService(this.app, () => this.settings);
     this.skillService = new SkillService(this.app);
     this.obsidianCliService = new ObsidianCliService();
+    this.promptStore = new PromptStore(this.app, () => this.settings.prompts.folder);
+    this.promptStore.watch(this);
+    this.promptStore.onChange(() => { this.registerPromptCommands(); this.eachView((view) => view.refreshControls()); });
 
     this.registerView(VIEW_TYPE_QIAOMU_AGENT, (leaf) => new ChatView(leaf, this));
     this.reading = this.addChild(new ReadingContextService(this.app, VIEW_TYPE_QIAOMU_AGENT, () => this.eachView((view) => view.refreshReading())));
@@ -96,7 +105,15 @@ export default class QiaomuAgentPlugin extends Plugin {
         .setSection("action").onClick(() => this.openInlineEdit(editor, ctx)));
     }));
 
+    this.addCommand({
+      id: "run-prompt",
+      name: "运行 Prompt…",
+      callback: () => new PromptPicker(this).open(),
+    });
+    this.registerPromptCommands();
+
     this.app.workspace.onLayoutReady(() => {
+      void this.promptStore.load().then(() => this.migratePrompts());
       this.eachView((view) => void view.ensureReady());
       void this.refreshIntegrations();
     });
@@ -138,6 +155,74 @@ export default class QiaomuAgentPlugin extends Plugin {
     await this.saveData(this.settings);
     notifyHomeChanged(this.app, this.manifest.id);
     this.eachView((view) => view.refreshControls());
+  }
+
+  promptCatalog(): PromptItem[] { return promptCatalog(this.promptStore.prompts); }
+
+  promptHost(): PromptHost {
+    return { app: this.app, store: this.promptStore, settings: () => this.settings.prompts, catalog: () => this.promptCatalog(), saveSettings: () => this.savePromptSettings() };
+  }
+
+  async savePromptSettings(): Promise<void> {
+    await this.saveData(this.settings);
+    this.registerPromptCommands();
+    this.eachView((view) => view.refreshControls());
+  }
+
+  async recordPromptUse(id: string): Promise<void> {
+    const usage = this.settings.prompts.usage;
+    usage[id] = { count: (usage[id]?.count ?? 0) + 1, last: Date.now() };
+    await this.savePromptSettings();
+  }
+
+  async togglePromptPin(item: PromptItem): Promise<void> {
+    const prompts = this.settings.prompts;
+    if (prompts.pinned.includes(item.id)) prompts.pinned = prompts.pinned.filter((id) => id !== item.id);
+    else { prompts.pinned = [...prompts.pinned, item.id]; prompts.enabled[item.id] = true; }
+    await this.savePromptSettings();
+  }
+
+  async runPrompt(id: string): Promise<void> {
+    await this.activateView();
+    this.firstView()?.requestPrompt(id);
+  }
+
+  /** Each enabled prompt is a palette command, so it can have a hotkey; turned-off ones hide themselves. */
+  private registerPromptCommands(): void {
+    for (const item of this.promptCatalog()) {
+      if (this.promptCommands.has(item.id) || !isEnabled(item, this.settings.prompts)) continue;
+      this.promptCommands.add(item.id);
+      const id = item.id;
+      this.addCommand({
+        id: `prompt-${commandKey(id)}`,
+        name: `运行 Prompt：${item.title}`,
+        checkCallback: (checking) => {
+          const current = this.promptCatalog().find((prompt) => prompt.id === id);
+          if (!current || !isEnabled(current, this.settings.prompts)) return false;
+          if (!checking) void this.runPrompt(id);
+          return true;
+        },
+      });
+    }
+  }
+
+  /** Before 0.5 prompts lived in settings; edited quick prompts and saved templates become files once. */
+  private async migratePrompts(): Promise<void> {
+    const settings = this.settings;
+    if (settings.prompts.migrated) return;
+    try {
+      const legacy = legacyPrompts(settings.customPrompts, settings.quickPrompts);
+      for (const { item, pinned } of legacy) {
+        const saved = await this.promptStore.save({ ...item, source: "user" });
+        if (pinned && !settings.prompts.pinned.includes(saved.id)) settings.prompts.pinned.push(saved.id);
+      }
+      delete settings.customPrompts; delete settings.quickPrompts;
+      settings.prompts.migrated = true;
+      await this.savePromptSettings();
+      if (legacy.length) new Notice(`已把 ${legacy.length} 条自定义 Prompt 移到「${settings.prompts.folder}」`);
+    } catch (error) {
+      console.error("Qiaomu Agent: prompt migration failed", error);
+    }
   }
 
   async refreshIntegrations(): Promise<void> {
@@ -201,4 +286,24 @@ export default class QiaomuAgentPlugin extends Plugin {
       if (leaf.view instanceof ChatView) callback(leaf.view);
     }
   }
+}
+
+/** A short stable command id for any prompt id (built-in slugs, uuids or file paths). */
+function commandKey(id: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  return `${id.replace(/[^a-z0-9-]+/gi, "-").slice(0, 40)}-${(hash >>> 0).toString(36)}`;
+}
+
+/** 运行 Prompt…: every enabled prompt, most used first. */
+class PromptPicker extends FuzzySuggestModal<PromptItem> {
+  constructor(private readonly plugin: QiaomuAgentPlugin) {
+    super(plugin.app);
+    this.setPlaceholder("运行哪个 Prompt？");
+  }
+  getItems(): PromptItem[] {
+    return byUsage(this.plugin.promptCatalog().filter((item) => isEnabled(item, this.plugin.settings.prompts)), this.plugin.settings.prompts);
+  }
+  getItemText(item: PromptItem): string { return `${item.title}  ·  ${item.category ?? SOURCE_NAMES[item.source]}`; }
+  onChooseItem(item: PromptItem): void { void this.plugin.runPrompt(item.id); }
 }
