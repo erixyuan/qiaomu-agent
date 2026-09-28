@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, normalizeSettings } from "../src/defaults";
-import { activeProvider, agentShown, chooseModel, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, exposedModels, maskKey, migrateProviders, newProvider, removeProvider, upsertProvider, visibleAgentModels } from "../src/services/model-sources";
+import { activeProvider, agentShown, chooseModel, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, exposedModels, maskKey, migrateProviders, newProvider, providerSecretId, removeProvider, upsertProvider, visibleAgentModels } from "../src/services/model-sources";
 import type { QiaomuSettings } from "../src/types";
 
 function fresh(): QiaomuSettings {
@@ -103,6 +103,29 @@ describe("model providers", () => {
     await expect(connectProvider(settings, "deepseek", "sk-bad", deps)).rejects.toThrow("401");
     expect(settings.providers).toEqual([]);
     expect(secrets.size).toBe(0);
+  });
+
+  it("builds secret ids Obsidian's SecretStorage accepts for every provider", async () => {
+    // Obsidian throws for ids that are not lowercase letters, digits and dashes, or longer than 64 characters.
+    const valid = /^[a-z0-9-]{1,64}$/;
+    expect(newProvider("custom", []).secretId).toMatch(valid);
+    for (const id of ["custom-1a2b3c4d", "siliconflow-12", "My_Gateway.v2 (Beta)", "一个很长的中文名字", ""]) {
+      expect(providerSecretId(id)).toMatch(valid);
+      expect(providerSecretId(id)).not.toMatch(/--/);
+    }
+    expect(providerSecretId("custom-1a2b3c4d")).not.toBe(providerSecretId("custom-1a2b3c4d"));
+
+    const settings = fresh();
+    const secrets = new Map<string, string>();
+    const deps = {
+      listModels: async () => [{ id: "Qwen/Qwen3-Coder", name: "Qwen", efforts: [] }],
+      getSecret: (id: string) => secrets.get(id) ?? null,
+      setSecret: (id: string, value: string) => { if (!valid.test(id)) throw new Error("密钥 ID 无效"); secrets.set(id, value); },
+    };
+    const { provider } = await connectProvider(settings, "custom", "sk-AbC_123.XyZ", deps, { baseUrl: "https://api.example.com", protocol: "anthropic", name: "test" });
+    expect(secrets.get(provider.secretId)).toBe("sk-AbC_123.XyZ");
+    await connectProvider(settings, "custom", "sk-New-KEY", deps, { baseUrl: "https://api.example.com" });
+    expect(secrets.get(settings.providers[0]!.secretId)).toBe("sk-New-KEY");
   });
 
   it("gives duplicate presets unique ids and isolated secrets", () => {

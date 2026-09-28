@@ -87,7 +87,7 @@ export async function connectProvider(
   const baseUrl = endpoint.baseUrl ?? fresh.baseUrl;
   const existing = settings.providers.find((item) => item.provider === presetId && item.baseUrl === baseUrl);
   const draft: ProviderConfig = existing
-    ? { ...existing, protocol: endpoint.protocol ?? existing.protocol, secretId: `qiaomu-agent-${existing.id}-${crypto.randomUUID()}` }
+    ? { ...existing, protocol: endpoint.protocol ?? existing.protocol, secretId: providerSecretId(existing.id) }
     : { ...fresh, baseUrl, ...(endpoint.protocol ? { protocol: endpoint.protocol } : {}), ...(endpoint.name ? { name: endpoint.name } : {}) };
   const models = await deps.listModels(draft, key.trim());
   if (presetId === "ollama" && models.length === 0) throw new Error("Ollama 尚未安装对话模型。请先在 Ollama 中下载模型后重试。");
@@ -142,12 +142,27 @@ export function activeProvider(settings: QiaomuSettings): ProviderConfig | undef
   return settings.providers.find((item) => sameEndpoint(item, settings.api));
 }
 
+const SECRET_ID_PREFIX = "qiaomu-agent-";
+const SECRET_ID_MAX = 64;
+
+/**
+ * A fresh SecretStorage id for a provider's key. Obsidian rejects ids that are not lowercase
+ * letters, digits and dashes, or longer than 64 characters, so the provider id is folded into
+ * that alphabet and shortened; the UUID alone keeps ids unique.
+ */
+export function providerSecretId(providerId: string): string {
+  const suffix = crypto.randomUUID().toLowerCase();
+  const room = SECRET_ID_MAX - SECRET_ID_PREFIX.length - suffix.length - 1;
+  const slug = providerId.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, room).replace(/^-+|-+$/g, "");
+  return `${SECRET_ID_PREFIX}${slug ? `${slug}-` : ""}${suffix}`;
+}
+
 export function newProvider(presetId: string, existing: ProviderConfig[]): ProviderConfig {
   const preset = API_PROVIDERS[presetId] ?? API_PROVIDERS.custom!;
   const taken = new Set(existing.map((item) => item.id));
   let id = presetId === "custom" ? `custom-${crypto.randomUUID().slice(0, 8)}` : presetId;
   for (let n = 2; taken.has(id); n++) id = `${presetId}-${n}`;
-  return { id, provider: presetId, baseUrl: preset.baseUrl, protocol: preset.protocol, model: "", secretId: `qiaomu-agent-${id}-${crypto.randomUUID()}` };
+  return { id, provider: presetId, baseUrl: preset.baseUrl, protocol: preset.protocol, model: "", secretId: providerSecretId(id) };
 }
 
 export function upsertProvider(settings: QiaomuSettings, provider: ProviderConfig): void {
@@ -162,7 +177,7 @@ export function removeProvider(settings: QiaomuSettings, id: string): void {
   settings.providers = settings.providers.filter((item) => item.id !== id);
   if (removed && sameEndpoint(removed, settings.api)) {
     const next = settings.providers[0];
-    settings.api = next ? connectionOf(next) : { provider: "openai", baseUrl: API_PROVIDERS.openai!.baseUrl, model: "", secretId: `qiaomu-agent-openai-${crypto.randomUUID()}` };
+    settings.api = next ? connectionOf(next) : { provider: "openai", baseUrl: API_PROVIDERS.openai!.baseUrl, model: "", secretId: providerSecretId("openai") };
     if (!next && settings.backendKind === "api") settings.backendKind = "auto";
   }
   settings.recentModels = settings.recentModels.filter((item) => item.source !== `api:${id}`);
