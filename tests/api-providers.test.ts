@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../src/defaults";
-import { API_PROVIDERS, apiProtocol, permitsEmptyKey, validateApiUrl } from "../src/services/api-providers";
+import { API_PROVIDERS, apiBaseUrl, apiProtocol, permitsEmptyKey, validateApiUrl } from "../src/services/api-providers";
 
 describe("API provider configuration", () => {
   it("covers requested providers with valid endpoints", () => {
@@ -8,6 +8,12 @@ describe("API provider configuration", () => {
     for (const [id, preset] of Object.entries(API_PROVIDERS)) {
       if (id !== "custom") expect(validateApiUrl(preset.baseUrl)).toBe(preset.baseUrl);
     }
+  });
+  it("normalizes pasted request URLs and repeated v1 without changing relay prefixes", () => {
+    for (const suffix of ["/chat/completions", "/responses", "/messages", "/models", "/v1"]) {
+      expect(apiBaseUrl({ ...DEFAULT_SETTINGS.api, provider: "custom", protocol: "openai-chat", baseUrl: `https://example.com/api/v1${suffix}` })).toBe("https://example.com/api/v1");
+    }
+    expect(apiBaseUrl({ ...DEFAULT_SETTINGS.api, baseUrl: "https://example.com/proxy" })).toBe("https://example.com/proxy");
   });
   it("uses native protocols for existing configs and explicit overrides", () => {
     expect(apiProtocol({ ...DEFAULT_SETTINGS.api, provider: "anthropic" })).toBe("anthropic");

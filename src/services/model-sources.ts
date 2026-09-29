@@ -1,5 +1,7 @@
+import { connectionText as ct } from "../i18n/connection";
 import type { ApiConnection, ModelChoice, ProviderConfig, QiaomuSettings } from "../types";
-import { API_PROVIDERS, apiProtocol } from "./api-providers";
+import { providerModels } from "./provider-models";
+import { API_PROVIDERS, apiProtocol, validateApiUrl, permitsEmptyKey } from "./api-providers";
 import { recommendedModels } from "./key-detection";
 import { resolveModel } from "./model-capabilities";
 
@@ -60,49 +62,44 @@ export function maskKey(key: string): string {
 
 /** Models the picker offers: exactly the enabled ones (explicit list), plus the configured default. */
 export function exposedModels(provider: ProviderConfig): ModelChoice[] {
-  const all = provider.models ?? [];
+  const all = providerModels(provider);
   // Efforts follow the per-model thinking setting, so a switch in settings shows up in the picker.
   return (provider.enabledModels ?? []).map((id) => ({ ...(all.find((model) => model.id === id) ?? { id, name: id }), efforts: resolveModel(provider, id).efforts }));
 }
 
-export interface ConnectDeps {
-  listModels: (connection: ApiConnection, key: string) => Promise<ModelChoice[]>;
-  getSecret: (id: string) => string | null;
-  setSecret: (id: string, value: string) => void;
+/** Saving a connection does not claim a successful network or model test. */
+export function addProviderConnection(
+  settings: QiaomuSettings, presetId: string, key: string,
+  setSecret: (id: string, value: string) => void,
+  endpoint: { baseUrl?: string; protocol?: ApiConnection["protocol"]; name?: string } = {},
+): ProviderConfig {
+  const provider = { ...newProvider(presetId, settings.providers), ...endpoint, models: [], enabledModels: [] };
+  provider.baseUrl = validateApiUrl(provider.baseUrl);
+  if (!key.trim() && !permitsEmptyKey(provider)) throw new Error(ct("missingKey"));
+  setSecret(provider.secretId, key.trim());
+  upsertProvider(settings, provider);
+  return provider;
 }
 
-/**
- * Connects one provider with a key: verifies it by listing models from that provider only,
- * enables the recommended models, and saves. On failure nothing is saved and the key is discarded.
- * An existing provider of the same preset and endpoint gets its key replaced instead of a duplicate.
- */
-export async function connectProvider(
-  settings: QiaomuSettings,
-  presetId: string,
-  key: string,
-  deps: ConnectDeps,
-  endpoint: { baseUrl?: string; protocol?: ApiConnection["protocol"]; name?: string } = {},
-): Promise<{ provider: ProviderConfig; models: ModelChoice[] }> {
-  const fresh = newProvider(presetId, settings.providers);
-  const baseUrl = endpoint.baseUrl ?? fresh.baseUrl;
-  const existing = settings.providers.find((item) => item.provider === presetId && item.baseUrl === baseUrl);
-  const draft: ProviderConfig = existing
-    ? { ...existing, protocol: endpoint.protocol ?? existing.protocol, secretId: providerSecretId(existing.id) }
-    : { ...fresh, baseUrl, ...(endpoint.protocol ? { protocol: endpoint.protocol } : {}), ...(endpoint.name ? { name: endpoint.name } : {}) };
-  const models = await deps.listModels(draft, key.trim());
-  if (presetId === "ollama" && models.length === 0) throw new Error("Ollama 尚未安装对话模型。请先在 Ollama 中下载模型后重试。");
-  deps.setSecret(draft.secretId, key.trim());
-  const recommended = recommendedModels(presetId, models);
-  const provider: ProviderConfig = {
-    ...draft,
-    models,
-    fetchedAt: Date.now(),
-    enabledModels: existing?.enabledModels ?? recommended,
-    model: existing?.model && models.some((model) => model.id === existing.model) ? existing.model : recommended[0] ?? draft.model,
-  };
-  if (existing) deps.setSecret(existing.secretId, "");
-  upsertProvider(settings, provider);
-  return { provider, models };
+/** Roll back this provider and active pointer on a failed disk write, without erasing other edits. */
+export async function persistProviderChange(
+  settings: QiaomuSettings, change: () => ProviderConfig, persist: () => Promise<void>,
+): Promise<ProviderConfig> {
+  const previous = new Map(settings.providers.map((provider) => [provider.id, provider]));
+  const previousApi = settings.api;
+  const provider = change();
+  const nextApi = settings.api;
+  try { await persist(); return provider; }
+  catch (error) {
+    const index = settings.providers.findIndex((item) => item.id === provider.id);
+    if (index >= 0 && settings.providers[index] === provider) {
+      const old = previous.get(provider.id);
+      if (old) settings.providers[index] = old;
+      else settings.providers.splice(index, 1);
+    }
+    if (settings.api === nextApi) settings.api = previousApi;
+    throw error;
+  }
 }
 
 function connectionOf(provider: ProviderConfig): ApiConnection {

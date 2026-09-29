@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, normalizeSettings } from "../src/defaults";
-import { activeProvider, agentShown, chooseModel, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, exposedModels, maskKey, migrateProviders, newProvider, providerSecretId, removeProvider, upsertProvider, visibleAgentModels } from "../src/services/model-sources";
+import { activeProvider, agentShown, chooseModel, addProviderConnection, persistProviderChange, DEFAULT_VISIBLE_AGENT_IDS, exposedModels, maskKey, migrateProviders, newProvider, providerSecretId, removeProvider, upsertProvider, visibleAgentModels } from "../src/services/model-sources";
 import type { QiaomuSettings } from "../src/types";
 
 function fresh(): QiaomuSettings {
@@ -74,35 +74,23 @@ describe("model providers", () => {
     expect(normalizeSettings({ chatFontSize: 99, codeFontSize: 3 }).chatFontSize).toBe(15);
   });
 
-  it("connects with one key sent only to the chosen provider, enabling recommended models", async () => {
-    const settings = fresh();
-    const secrets = new Map<string, string>();
-    const listModels = vi.fn(async (connection: { provider: string }, _key: string) => connection.provider === "anthropic"
-      ? [{ id: "claude-sonnet-5", name: "Sonnet", efforts: [] }, { id: "claude-opus-5-5", name: "Opus", efforts: [] }, { id: "claude-haiku-4-5", name: "Haiku", efforts: [] }]
-      : []);
-    const deps = { listModels, getSecret: (id: string) => secrets.get(id) ?? null, setSecret: (id: string, value: string) => { if (value) secrets.set(id, value); else secrets.delete(id); } };
-    const { provider } = await connectProvider(settings, "anthropic", " sk-ant-key ", deps);
-    expect(listModels).toHaveBeenCalledOnce();
-    expect(listModels.mock.calls[0]![0]).toMatchObject({ provider: "anthropic" });
-    expect(listModels.mock.calls[0]![1]).toBe("sk-ant-key");
-    expect(provider.enabledModels).toEqual(["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"]);
-    expect(provider.model).toBe("claude-opus-5-5");
-    expect(secrets.get(provider.secretId)).toBe("sk-ant-key");
-    expect(settings.api.provider).toBe("anthropic");
-
-    // Re-pasting a new key for the same vendor replaces the old key instead of adding a duplicate.
-    await connectProvider(settings, "anthropic", "sk-ant-new", deps);
-    expect(settings.providers).toHaveLength(1);
-    expect([...secrets.values()]).toEqual(["sk-ant-new"]);
+  it("saves independent connections without fetching or silently enabling models", () => {
+    const settings = fresh(); const secrets = new Map<string, string>();
+    const write = (id: string, key: string) => { secrets.set(id, key); };
+    const first = addProviderConnection(settings, "custom", " key-one ", write, { baseUrl: "https://example.com/v1", name: "First" });
+    const second = addProviderConnection(settings, "custom", "key-two", write, { baseUrl: "https://example.com/v1", name: "Second" });
+    expect(settings.providers).toHaveLength(2);
+    expect(first.secretId).not.toBe(second.secretId);
+    expect(secrets.get(first.secretId)).toBe("key-one");
+    expect(first.enabledModels).toEqual([]);
+    expect(first.fetchedAt).toBeUndefined();
+    expect(first.model).toBe("");
   });
-
-  it("saves nothing when verification fails", async () => {
-    const settings = fresh();
-    const secrets = new Map<string, string>();
-    const deps = { listModels: async () => { throw new Error("401"); }, getSecret: () => null, setSecret: (id: string, value: string) => { secrets.set(id, value); } };
-    await expect(connectProvider(settings, "deepseek", "sk-bad", deps)).rejects.toThrow("401");
-    expect(settings.providers).toEqual([]);
-    expect(secrets.size).toBe(0);
+  it("validates local fields before saving credentials", () => {
+    const settings = fresh(); const write = vi.fn();
+    expect(() => addProviderConnection(settings, "custom", "", write, { baseUrl: "https://example.com" })).toThrow("API Key");
+    expect(() => addProviderConnection(settings, "custom", "key", write, { baseUrl: "http://example.com" })).toThrow("HTTPS");
+    expect(settings.providers).toEqual([]); expect(write).not.toHaveBeenCalled();
   });
 
   it("builds secret ids Obsidian's SecretStorage accepts for every provider", async () => {
@@ -122,10 +110,11 @@ describe("model providers", () => {
       getSecret: (id: string) => secrets.get(id) ?? null,
       setSecret: (id: string, value: string) => { if (!valid.test(id)) throw new Error("密钥 ID 无效"); secrets.set(id, value); },
     };
-    const { provider } = await connectProvider(settings, "custom", "sk-AbC_123.XyZ", deps, { baseUrl: "https://api.example.com", protocol: "anthropic", name: "test" });
+    const provider = addProviderConnection(settings, "custom", "sk-AbC_123.XyZ", deps.setSecret, { baseUrl: "https://api.example.com", protocol: "anthropic", name: "test" });
     expect(secrets.get(provider.secretId)).toBe("sk-AbC_123.XyZ");
-    await connectProvider(settings, "custom", "sk-New-KEY", deps, { baseUrl: "https://api.example.com" });
-    expect(secrets.get(settings.providers[0]!.secretId)).toBe("sk-New-KEY");
+    addProviderConnection(settings, "custom", "sk-New-KEY", deps.setSecret, { baseUrl: "https://api.example.com" });
+    expect(secrets.get(settings.providers[0]!.secretId)).toBe("sk-AbC_123.XyZ");
+    expect(secrets.get(settings.providers[1]!.secretId)).toBe("sk-New-KEY");
   });
 
   it("gives duplicate presets unique ids and isolated secrets", () => {
@@ -166,5 +155,23 @@ describe("model providers", () => {
     expect(settings.providers).toEqual([]);
     expect(settings.backendKind).toBe("auto");
     expect(() => chooseModel(settings, "api:deepseek", "x")).toThrow("已被移除");
+  });
+});
+
+
+describe("failed provider persistence", () => {
+  it("rolls back a new provider and active pointer when storage fails", async () => {
+    const settings = fresh(); const api = settings.api;
+    await expect(persistProviderChange(settings, () => addProviderConnection(settings, "openai", "dummy", () => {}), async () => { throw new Error("disk full"); })).rejects.toThrow("disk full");
+    expect(settings.providers).toEqual([]); expect(settings.api).toBe(api);
+  });
+  it("restores edited settings without discarding another provider's change", async () => {
+    const settings = fresh();
+    const old = addProviderConnection(settings, "openai", "dummy", () => {});
+    const api = settings.api;
+    await expect(persistProviderChange(settings, () => { const next = { ...old, model: "new" }; upsertProvider(settings, next); return next; }, async () => {
+      addProviderConnection(settings, "anthropic", "dummy", () => {}); throw new Error("disk full");
+    })).rejects.toThrow("disk full");
+    expect(settings.providers[0]).toBe(old); expect(settings.providers).toHaveLength(2); expect(settings.api).toBe(api);
   });
 });

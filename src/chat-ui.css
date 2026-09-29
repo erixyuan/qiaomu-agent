@@ -348,3 +348,6 @@
 @media (prefers-reduced-motion: reduce) {
   .qiaomu-agent--react .qa-working-glyph path { animation: none; }
 }
+
+/* Transcript text remains selectable inside native custom views. */
+.qiaomu-agent--react .qa-message-content { -webkit-user-select: text; user-select: text; }

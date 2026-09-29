@@ -96,7 +96,7 @@ describe("API discovery transport", () => {
     vi.stubGlobal("fetch", fetcher);
     const backend = new ApiBackend({ ...DEFAULT_SETTINGS.api, provider: "custom", protocol }, "test-secret");
     expect((await backend.listModels())[0]?.id).toBe("example-model");
-    expect(fetcher.mock.calls[0]?.[1].headers[header]).toContain("test-secret");
+    expect(new Headers(fetcher.mock.calls[0]?.[1].headers).get(header)).toContain("test-secret");
     expect(fetcher.mock.calls[0]?.[1].redirect).toBe("error");
   });
   it("snapshots config and refuses to send secrets over remote HTTP", async () => {
