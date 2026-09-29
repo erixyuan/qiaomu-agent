@@ -79,3 +79,47 @@
 /* An enabled switch needs contrast between the track and thumb in both themes. */
 :is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .checkbox-container.is-enabled { background-color: var(--qa-ink); --toggle-thumb-color: var(--qa-surface); }
 :is(.qiaomu-agent-settings, .qa-provider-modal, .qa-provider-chooser-modal, .qa-capabilities-modal) .checkbox-container:focus-visible { outline: 1px solid var(--qa-focus); outline-offset: 3px; }
+
+/* One quiet input boundary; the eye is an independent keyboard/touch target. */
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-secret-input { position: relative; width: 100%; min-width: 0; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-secret-input input.qa-ms-input { padding-right: 44px; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) button.qa-secret-toggle { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 32px; height: 30px; padding: 0; border: 0; border-radius: 5px; background: transparent; box-shadow: none; color: var(--qa-muted); }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) button.qa-secret-toggle:hover { color: var(--qa-ink); background: var(--qa-soft); }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) button.qa-secret-toggle:focus-visible { outline: 1px solid var(--qa-focus); outline-offset: -2px; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) button.qa-secret-toggle svg { width: 16px; height: 16px; }
+:is(.qa-provider-chooser-modal, .qa-provider-modal) .qa-manual-model { display: flex; align-items: center; gap: 8px; color: var(--qa-muted); font-size: 13px; cursor: pointer; }
+:is(.qa-provider-chooser-modal, .qa-provider-modal) .qa-manual-model input { accent-color: var(--qa-ink); }
+.qa-provider-chooser-modal .qa-ms-form { gap: 16px; }
+.qa-provider-chooser-modal .qa-ms-field { gap: 6px; }
+.qa-provider-chooser-modal .qa-ms-footer { flex-wrap: wrap; }
+.qa-provider-chooser-modal .qa-segments { flex-wrap: wrap; }
+@media (pointer: coarse) {
+  :is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-secret-input input.qa-ms-input { min-height: 44px; padding-right: 48px; }
+  :is(.qa-provider-modal, .qa-provider-chooser-modal) button.qa-secret-toggle { width: 44px; height: 40px; right: 1px; }
+}
+/* Native label margins otherwise add 12px to every field and misalign the eye. */
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-ms-form label.qa-input-label { display: block; margin: 0; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-manual-model input[type="checkbox"] { margin: 0; flex: none; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-manual-model input[type="checkbox"]:checked { background-color: var(--qa-ink); border-color: var(--qa-ink); }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-manual-model input[type="checkbox"]:focus-visible { outline: 1px solid var(--qa-focus); outline-offset: 3px; }
+
+/* Discovery and manual entry remain adjacent at every catalog size. */
+.qa-provider-modal .qa-ms-head-actions { flex-wrap: wrap; }
+.qa-provider-modal .qa-ms-add-model { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 8px; }
+.qa-provider-modal .qa-ms-add-model label.qa-input-label { margin: 0; min-width: 0; }
+@media (max-width: 600px) { .qa-provider-modal .qa-ms-add-model { grid-template-columns: minmax(0, 1fr) auto auto; } .qa-provider-modal .qa-ms-add-model label:first-child { grid-column: 1 / -1; } }
+
+/* Clipboard is a first-class action and never requires focusing the secure field. */
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-secret-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) .qa-secret-status { color: var(--qa-muted); font-size: 12px; overflow-wrap: anywhere; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal) input:focus::placeholder { opacity: 0; }
+:is(.qa-provider-modal, .qa-provider-chooser-modal).qa-mobile-provider { max-height: calc(var(--qa-visible-height, 100dvh) - 24px); }
+:is(.qa-provider-modal, .qa-provider-chooser-modal).qa-mobile-provider .modal-content { min-height: 0; overflow-y: auto; scroll-padding-block: 16px; }
+.qa-provider-chooser-modal.qa-mobile-provider .qa-ms-form { flex-shrink: 0; overflow: visible; }
+.qa-mobile-provider .qa-secret-input input.qa-ms-input { min-height: 44px; font-size: 16px; }
+.qa-mobile-provider button.qa-secret-paste { min-height: 44px; }
+.qa-mobile-provider button.qa-secret-toggle { width: 44px; height: 40px; right: 1px; }
+.qa-mobile-provider .qa-secret-input input.qa-ms-input { padding-right: 48px; }
+.qa-mobile-provider .qa-ms-footer { flex-direction: column; align-items: stretch; }
+.qa-mobile-provider .qa-ms-footer-note { min-width: 0; }
+.qa-mobile-provider .qa-ms-footer > button { align-self: flex-end; max-width: 100%; white-space: normal; }

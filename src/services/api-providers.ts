@@ -59,7 +59,7 @@ export function permitsEmptyKey(connection: ApiConnection): boolean {
  * their version segment (the Claude Code convention), which would send requests to `/messages`.
  */
 export function apiBaseUrl(connection: ApiConnection): string {
-  const base = validateApiUrl(connection.baseUrl).replace(/(\/v1)+$/, "/v1");
+  const base = validateApiUrl(connection.baseUrl).replace(/\/(?:chat\/completions|responses|messages|models)$/, "").replace(/(\/v1)+$/, "/v1");
   const path = new URL(base).pathname.replace(/\/$/, "");
   const versioned = /\/v\d+[a-z0-9]*$/i.test(path);
   // Anthropic-compatible paths never carry the version (…/api/anthropic); OpenAI-compatible ones do

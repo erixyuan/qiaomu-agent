@@ -5,3 +5,6 @@ main.js
 .DS_Store
 coverage/
 .qiaomu-agent-test-vault/
+
+# Local agent configuration and nested development checkouts
+.claude/

@@ -1,3 +1,8 @@
+import { mobileProviderModal } from "./mobile-provider-modal";
+import { providerModels, manualProviderModels, refreshProviderModels, addManualProviderModel } from "../services/provider-models";
+import { secretInput } from "./secret-input";
+import { connectionText as ct } from "../i18n/connection";
+import { connectionError } from "../services/api-transport";
 import { Modal, Notice, Platform, setIcon, type App } from "obsidian";
 import type QiaomuAgentPlugin from "../main";
 import type { ApiConnection, ChatRequest, CliDetection, ModelChoice, ModelOptions, ProviderConfig } from "../types";
@@ -5,7 +10,7 @@ import { API_PROVIDERS, apiProtocol, permitsEmptyKey, validateApiUrl, type Provi
 import { ApiBackend } from "../services/api-backend";
 import { compactTokens, resolveModel } from "../services/model-capabilities";
 import { isChatModel, recommendedModels } from "../services/key-detection";
-import { agentShown, connectProvider, DEFAULT_VISIBLE_AGENT_IDS, maskKey, providerHost, providerIcon, providerLabel, providerSecretId, removeProvider, upsertProvider } from "../services/model-sources";
+import { agentShown, addProviderConnection, persistProviderChange, DEFAULT_VISIBLE_AGENT_IDS, maskKey, providerHost, providerIcon, providerLabel, providerSecretId, removeProvider, upsertProvider } from "../services/model-sources";
 import { nativeTransportFor, nativeTransportLabel } from "../services/native-agent-backend";
 import { agentIconKey } from "./brand-icon";
 import { BRAND_ICONS } from "./brand-icons";
@@ -60,8 +65,17 @@ function modalTitle(modal: Modal, text: string, icon?: { key: string | undefined
   modal.titleEl.createSpan({ cls: "qa-modal-title-text", text });
 }
 
-function listModelsFor(connection: ApiConnection, key: string): Promise<ModelChoice[]> {
-  return new ApiBackend(connection, key).listModels();
+function listModelsFor(connection: ApiConnection, key: string, signal?: AbortSignal): Promise<ModelChoice[]> {
+  return new ApiBackend(connection, key).listModels(undefined, signal);
+}
+
+async function verifyModel(connection: ApiConnection, key: string, model: string, signal?: AbortSignal): Promise<void> {
+  let text = "";
+  await new ApiBackend({ ...connection, model }, key).send(
+    { prompt: "Reply with exactly: OK", systemPrompt: "", cwd: null, model, modelOptions: { maxOutputTokens: 1024 }, permissionMode: "plan", history: [], webSearch: false },
+    { onText: (chunk) => { text += chunk; }, onStatus: () => {} },
+    signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000));
+  if (!text.trim()) throw new Error(ct("noText"));
 }
 
 /**
@@ -173,7 +187,8 @@ export class ProviderSettings {
 const GROUPS: Array<[ProviderGroup, string]> = [["global", "海外"], ["cn", "国内"], ["relay", "聚合平台"]];
 
 /** Choose a provider, then paste its key — one modal, two steps. */
-class ProviderChooserModal extends Modal {
+export class ProviderChooserModal extends Modal {
+  private closed = false;
   private selected = "";
   private key = "";
   private name = "";
@@ -184,8 +199,9 @@ class ProviderChooserModal extends Modal {
   private changed = false;
   constructor(app: App, private readonly plugin: QiaomuAgentPlugin, private readonly onChange: () => void) { super(app); }
 
-  override onOpen(): void { this.modalEl.addClass("qa-provider-chooser-modal"); this.draw(); }
-  override onClose(): void { this.contentEl.empty(); if (this.changed) this.onChange(); }
+  private disposeMobile = () => {};
+  override onOpen(): void { this.closed = false; this.modalEl.addClass("qa-provider-chooser-modal"); this.draw(); this.disposeMobile = mobileProviderModal(this.modalEl, this.contentEl); if (!Platform.isMobile) this.contentEl.querySelector<HTMLInputElement>("input")?.focus(); }
+  override onClose(): void { this.disposeMobile(); this.closed = true; this.busy = false; this.key = ""; this.contentEl.empty(); if (this.changed) this.onChange(); }
 
   private draw(): void {
     this.contentEl.empty();
@@ -231,13 +247,13 @@ class ProviderChooserModal extends Modal {
       if (event.key === "ArrowDown") { const first = items.find((item) => !item.button.hidden); if (first) { event.preventDefault(); first.button.focus(); } }
     });
     filter();
-    search.focus();
+    if (!Platform.isMobile) search.focus();
   }
 
   private drawConnection(): void {
     const preset = API_PROVIDERS[this.selected] ?? API_PROVIDERS.custom!;
     modalTitle(this, this.selected === "custom" ? "自定义接口" : preset.label, { key: preset.icon, fallback: this.selected === "custom" ? "settings-2" : "boxes" },
-      () => { this.selected = ""; this.error = ""; this.draw(); });
+      () => { if (this.busy) return; this.selected = ""; this.error = ""; this.draw(); });
     const form = this.contentEl.createDiv({ cls: "qa-ms-form" });
     if (this.selected === "custom") {
       const name = labeledInput(field(form, "显示名称"), "显示名称", "text", "qa-ms-input", { placeholder: "例如：我的中转站" });
@@ -245,9 +261,17 @@ class ProviderChooserModal extends Modal {
       name.addEventListener("input", () => { this.name = name.value.trim(); });
       const types = field(form, "接口类型").createDiv({ cls: "qa-segments", attr: { role: "radiogroup" } });
       labelGroup(types, "接口类型");
-      for (const [value, label] of [["openai-chat", "OpenAI 兼容"], ["anthropic", "Anthropic 兼容"]] as const) {
-        const option = types.createEl("button", { text: label, attr: { type: "button", role: "radio", "aria-checked": String(this.protocol === value) } });
-        option.addEventListener("click", () => { this.protocol = value; this.draw(); });
+      for (const [value, label] of [["openai-chat", "OpenAI 兼容"], ["openai-responses", ct("responses")], ["anthropic", "Anthropic 兼容"]] as const) {
+        const option = types.createEl("button", { text: label, attr: { type: "button", role: "radio", "aria-checked": String(this.protocol === value), tabindex: this.protocol === value ? "0" : "-1" } });
+        option.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const choices = [...types.querySelectorAll<HTMLButtonElement>("[role=radio]")];
+          const index = choices.indexOf(option);
+          const target = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + choices.length) % choices.length;
+          choices[target]?.click();
+        });
+        option.addEventListener("click", () => { this.protocol = value; this.error = ""; this.draw(); this.contentEl.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus(); });
       }
       const url = labeledInput(field(form, "接口地址"), "接口地址", "url", "qa-ms-input is-mono", { placeholder: this.protocol === "anthropic" ? "https://api.example.com" : "https://api.example.com/v1" });
       url.value = this.url;
@@ -256,7 +280,7 @@ class ProviderChooserModal extends Modal {
     let keyInput: HTMLInputElement | null = null;
     if (!preset.local) {
       const keyField = field(form, "API Key");
-      keyInput = labeledInput(keyField, "API Key", "password", "qa-ms-input is-mono", { placeholder: "粘贴 API Key", autocomplete: "off", spellcheck: "false" });
+      keyInput = secretInput(keyField, "API Key", "粘贴 API Key");
       keyInput.value = this.key;
       keyInput.addEventListener("input", () => { this.key = keyInput!.value.trim(); });
       keyInput.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); void this.connect(); } });
@@ -269,12 +293,12 @@ class ProviderChooserModal extends Modal {
     const note = footer.createDiv({ cls: "qa-ms-footer-note" });
     if (!preset.local) {
       setIcon(note.createSpan({ cls: "qa-inline-icon", attr: { "aria-hidden": "true" } }), "lock");
-      note.createSpan({ text: "密钥只保存在本机，验证通过后自动读取模型列表" });
+      note.createSpan({ text: ct("secretNote") });
     }
-    const connect = footer.createEl("button", { cls: "mod-cta", text: this.busy ? "正在验证…" : preset.local ? "检测并连接" : "验证并连接", attr: { type: "button" } });
+    const connect = footer.createEl("button", { cls: "mod-cta", text: this.busy ? ct("saving") : ct("saveManage"), attr: { type: "button" } });
     connect.disabled = this.busy;
     connect.addEventListener("click", () => void this.connect());
-    keyInput?.focus();
+    form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button").forEach((control) => { control.disabled = this.busy; });
   }
 
   private keyLink(parent: HTMLElement, href: string): void {
@@ -285,34 +309,38 @@ class ProviderChooserModal extends Modal {
   private async connect(): Promise<void> {
     if (this.busy) return;
     const preset = API_PROVIDERS[this.selected] ?? API_PROVIDERS.custom!;
-    if (!preset.local && !this.key) { this.error = "请输入 API Key"; this.draw(); return; }
+    if (!preset.local && !this.key) { this.error = "请输入 API Key"; this.draw(); this.contentEl.querySelector<HTMLElement>(Platform.isMobile ? ".qa-secret-paste" : ".qa-secret-input input")?.focus(); return; }
     let endpoint: { baseUrl?: string; protocol?: ApiConnection["protocol"]; name?: string } = {};
     if (this.selected === "custom") {
       try { endpoint = { baseUrl: validateApiUrl(this.url), protocol: this.protocol, name: this.name || undefined }; }
       catch (error) { this.error = error instanceof Error ? error.message : String(error); this.draw(); return; }
     }
     this.busy = true; this.error = ""; this.draw();
+    let added: ProviderConfig | undefined;
     try {
-      const { provider } = await connectProvider(this.plugin.settings, this.selected, preset.local ? "" : this.key, {
-        listModels: listModelsFor,
-        getSecret: (id) => this.app.secretStorage.getSecret(id),
-        setSecret: (id, value) => this.app.secretStorage.setSecret(id, value),
-      }, endpoint);
-      await this.plugin.saveSettings();
+      const provider = await persistProviderChange(this.plugin.settings, () => added = addProviderConnection(this.plugin.settings, this.selected, preset.local ? "" : this.key,
+        (id, value) => this.app.secretStorage.setSecret(id, value), endpoint), () => this.plugin.saveSettings());
       this.changed = true;
-      new Notice(`已连接 ${providerLabel(provider)}`);
+      if (this.closed) { this.onChange(); return; }
+      new Notice(`${ct("saved")} · ${providerLabel(provider)}`);
       this.close();
       new ProviderModal(this.app, this.plugin, provider.id, this.onChange).open();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.error = /[(（](401|403)[)）]/.test(message) ? "密钥无效或没有权限，请检查服务商与密钥" : message;
+      if (added) this.app.secretStorage.setSecret(added.secretId, "");
+      if (this.closed) return;
+      this.error = connectionError(error);
       this.busy = false; this.draw();
     }
   }
 }
 
 /** One provider on one page: connection, then its models; every change applies immediately. */
-class ProviderModal extends Modal {
+export class ProviderModal extends Modal {
+  private modelIdDraft = "";
+  private modelNameDraft = "";
+  private modelError = "";
+  private operation: AbortController | null = null;
+  private closed = false;
   private query = "";
   private detailModel = "";
   private keyDraft = "";
@@ -328,17 +356,19 @@ class ProviderModal extends Modal {
   private get provider(): ProviderConfig | undefined { return this.plugin.settings.providers.find((item) => item.id === this.id); }
   private secret(provider: ProviderConfig): string { return this.app.secretStorage.getSecret(provider.secretId) ?? ""; }
 
+  private disposeMobile = () => {};
   override onOpen(): void {
+    this.closed = false;
     this.modalEl.addClass("qa-provider-modal");
     const provider = this.provider;
     if (provider) { this.endpointDraft = provider.baseUrl; this.protocolDraft = apiProtocol(provider); }
     this.draw();
+    this.disposeMobile = mobileProviderModal(this.modalEl, this.contentEl);
   }
-  override onClose(): void { this.contentEl.empty(); this.onChange(); }
+  override onClose(): void { this.disposeMobile(); this.closed = true; this.operation?.abort(); this.keyDraft = ""; this.contentEl.empty(); this.onChange(); }
 
   private async save(provider: ProviderConfig): Promise<void> {
-    upsertProvider(this.plugin.settings, provider);
-    await this.plugin.saveSettings();
+    await persistProviderChange(this.plugin.settings, () => { upsertProvider(this.plugin.settings, provider); return provider; }, () => this.plugin.saveSettings());
   }
 
   private draw(): void {
@@ -354,6 +384,7 @@ class ProviderModal extends Modal {
     footer.createDiv({ cls: "qa-ms-footer-note", text: this.confirmRemove ? "会删除这个服务商和它的密钥，且不能撤销。" : "" });
     if (this.confirmRemove) footer.createEl("button", { cls: "qa-ms-button", text: "取消", attr: { type: "button" } }).addEventListener("click", () => { this.confirmRemove = false; this.draw(); });
     const remove = footer.createEl("button", { cls: `qa-ms-button ${this.confirmRemove ? "is-danger-strong" : "is-danger"}`, text: this.confirmRemove ? "确认移除" : "移除服务商", attr: { type: "button" } });
+    remove.disabled = Boolean(this.busy);
     remove.addEventListener("click", async () => {
       if (!this.confirmRemove) { this.confirmRemove = true; this.draw(); return; }
       this.app.secretStorage.setSecret(provider.secretId, "");
@@ -375,7 +406,7 @@ class ProviderModal extends Modal {
     const refresh = () => { save.disabled = Boolean(this.busy) || !dirty(); };
     if (!preset.local) {
       const keyField = field(form, "API Key", currentKey ? `当前 ${maskKey(currentKey)}` : "未填写");
-      const key = labeledInput(keyField, "API Key", "password", "qa-ms-input is-mono", { placeholder: currentKey ? "粘贴新的 Key 以替换" : "粘贴 API Key", autocomplete: "off", spellcheck: "false" });
+      const key = secretInput(keyField, "API Key", currentKey ? "粘贴新的 Key 以替换" : "粘贴 API Key");
       key.value = this.keyDraft;
       key.addEventListener("input", () => { this.keyDraft = key.value.trim(); refresh(); });
       if (preset.website) {
@@ -389,16 +420,25 @@ class ProviderModal extends Modal {
     if (provider.provider === "custom") {
       const types = field(form, "接口类型").createDiv({ cls: "qa-segments", attr: { role: "radiogroup" } });
       labelGroup(types, "接口类型");
-      for (const [value, label] of [["openai-chat", "OpenAI 兼容"], ["anthropic", "Anthropic 兼容"]] as const) {
-        const option = types.createEl("button", { text: label, attr: { type: "button", role: "radio", "aria-checked": String(this.protocolDraft === value) } });
-        option.addEventListener("click", () => { this.protocolDraft = value; this.draw(); });
+      for (const [value, label] of [["openai-chat", "OpenAI 兼容"], ["openai-responses", ct("responses")], ["anthropic", "Anthropic 兼容"]] as const) {
+        const option = types.createEl("button", { text: label, attr: { type: "button", role: "radio", "aria-checked": String(this.protocolDraft === value), tabindex: this.protocolDraft === value ? "0" : "-1" } });
+        option.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const choices = [...types.querySelectorAll<HTMLButtonElement>("[role=radio]")];
+          const index = choices.indexOf(option);
+          const target = event.key === "Home" ? 0 : event.key === "End" ? choices.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + choices.length) % choices.length;
+          choices[target]?.click();
+        });
+        option.addEventListener("click", () => { this.protocolDraft = value; this.error = ""; this.draw(); this.contentEl.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus(); });
       }
     }
     if (this.error) form.createDiv({ cls: "qa-inline-error", text: this.error, attr: { role: "alert" } });
     const actions = form.createDiv({ cls: "qa-ms-form-actions" });
-    save = actions.createEl("button", { cls: "qa-ms-button", text: this.busy === "connection" ? "正在验证…" : "验证并保存", attr: { type: "button" } });
+    save = actions.createEl("button", { cls: "qa-ms-button", text: this.busy === "connection" ? ct("saving") : ct("readSave"), attr: { type: "button" } });
     save.addEventListener("click", () => void this.saveConnection(provider));
     refresh();
+    if (this.busy) form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button").forEach((control) => { control.disabled = true; });
   }
 
   private async saveConnection(provider: ProviderConfig): Promise<void> {
@@ -408,6 +448,7 @@ class ProviderModal extends Modal {
     catch (error) { this.error = error instanceof Error ? error.message : "接口地址无效"; this.draw(); return; }
     const oldKey = this.secret(provider);
     const changedEndpoint = endpoint !== provider.baseUrl;
+    const changedIdentity = changedEndpoint || this.protocolDraft !== apiProtocol(provider);
     const key = this.keyDraft || (!changedEndpoint ? oldKey : "");
     if (!key && !permitsEmptyKey({ ...provider, baseUrl: endpoint })) {
       this.error = changedEndpoint ? "修改接口地址后，请填写新地址的 API Key" : "请填写 API Key";
@@ -415,43 +456,55 @@ class ProviderModal extends Modal {
     }
     const candidate = { ...provider, baseUrl: endpoint, protocol: this.protocolDraft };
     this.busy = "connection"; this.error = ""; this.draw();
+    const nextSecretId = this.keyDraft || changedEndpoint ? providerSecretId(provider.id) : provider.secretId;
+    let saved = false;
     try {
-      const models = await listModelsFor(candidate, key);
-      const nextSecretId = this.keyDraft || changedEndpoint ? providerSecretId(provider.id) : provider.secretId;
       if (nextSecretId !== provider.secretId) this.app.secretStorage.setSecret(nextSecretId, key);
-      await this.save({ ...candidate, secretId: nextSecretId, models, fetchedAt: Date.now() });
+      const next = changedIdentity ? refreshProviderModels(candidate, []) : candidate;
+      await this.save({ ...next, secretId: nextSecretId, ...(changedIdentity ? { fetchedAt: undefined } : {}) });
+      saved = true;
       if (nextSecretId !== provider.secretId) this.app.secretStorage.setSecret(provider.secretId, "");
       this.keyDraft = "";
       this.endpointDraft = endpoint;
-      new Notice("连接已更新");
-    } catch (error) { this.error = `验证失败：${error instanceof Error ? error.message : String(error)}`; }
-    finally { this.busy = ""; this.draw(); }
+      new Notice(ct("saved"));
+    } catch (error) {
+      if (!saved && nextSecretId !== provider.secretId) this.app.secretStorage.setSecret(nextSecretId, "");
+      this.error = connectionError(error);
+    }
+    finally { this.busy = ""; if (!this.closed) this.draw(); }
   }
 
   private drawModels(provider: ProviderConfig): void {
     const section = this.contentEl.createDiv({ cls: "qa-ms-section" });
-    const all = provider.models ?? [];
+    const all = providerModels(provider);
     const enabled = new Set(provider.enabledModels ?? []);
     const recommended = new Set(recommendedModels(provider.provider, all, 3, { pad: false }));
     const key = this.secret(provider);
     const total = new Set([...all.map((model) => model.id), ...enabled]).size;
-    const actions = sectionHead(section, "模型", `打开的模型会出现在对话的模型菜单里${total ? ` · 已启用 ${enabled.size} / ${total}` : ""}`);
-    const refresh = actionButton(actions, "refresh-cw", this.busy === "models" ? "刷新中…" : "刷新列表", this.busy === "models" ? "is-busy" : "");
+    const actions = sectionHead(section, "模型", ct("modelHelp"));
+    const refresh = actionButton(actions, "refresh-cw", this.busy === "models" ? "刷新中…" : ct("getModels"), this.busy === "models" ? "is-busy" : "");
     refresh.disabled = Boolean(this.busy);
     refresh.addEventListener("click", async () => {
-      this.busy = "models"; this.draw();
+      if (this.busy) return;
+      const operation = new AbortController(); this.operation = operation;
+      this.busy = "models"; this.modelError = ""; this.draw();
       try {
-        const models = await listModelsFor(provider, key);
-        await this.save({ ...provider, models, fetchedAt: Date.now() });
+        const models = await listModelsFor(provider, key, operation.signal);
+        if (this.closed || !this.provider) return;
+        await this.save(refreshProviderModels(this.provider, models));
         new Notice(`已获取 ${models.length} 个模型`);
-      } catch (error) { new Notice(error instanceof Error ? error.message : "获取模型失败"); }
-      this.busy = ""; this.draw();
+      } catch (error) { if (!this.closed) this.modelError = connectionError(error); }
+      this.busy = ""; if (!this.closed) this.draw();
     });
+    const add = actionButton(actions, "plus", ct("addManual"), "is-quiet");
+    add.disabled = Boolean(this.busy);
+    add.addEventListener("click", () => { this.addingModel = true; this.draw(); this.contentEl.querySelector<HTMLInputElement>(".qa-ms-add input")?.focus(); });
     const defaultModel = provider.model || provider.enabledModels?.[0];
     const test = actionButton(actions, "flask-conical", this.busy === "test" ? "测试中…" : "测试", this.busy === "test" ? "is-busy" : "");
     test.disabled = Boolean(this.busy) || (!key && !permitsEmptyKey(provider)) || !defaultModel;
     test.addEventListener("click", () => void this.testModel(provider, key));
 
+    if (this.modelError) section.createDiv({ cls: "qa-inline-error", text: this.modelError, attr: { role: "alert" } });
     const search = total > 8 ? labeledInput(section, "搜索模型", "search", "qa-ms-input qa-ms-search", { placeholder: `搜索 ${total} 个模型` }) : null;
     if (search) search.value = this.query;
     const list = section.createDiv({ cls: "qa-ms-list qa-ms-models" });
@@ -471,29 +524,35 @@ class ProviderModal extends Modal {
         this.modelRow(list, provider, id, all.find((item) => item.id === id), enabled, ids, recommended.has(id));
       }
       if (shown.length > 200) list.createDiv({ cls: "qa-ms-list-empty", text: `还有 ${shown.length - 200} 个，请搜索` });
-      if (!shown.length) list.createDiv({ cls: "qa-ms-list-empty", text: q ? "没有匹配的模型" : "还没有模型。点“刷新列表”读取，或手动添加模型 ID。" });
+      if (!shown.length) list.createDiv({ cls: "qa-ms-list-empty", text: q ? "没有匹配的模型" : ct("modelEmpty") });
     };
     search?.addEventListener("input", () => { this.query = search.value; drawList(); });
     drawList();
 
-    if (!this.addingModel) {
-      const add = actionButton(section, "plus", "手动添加模型 ID", "is-quiet");
-      add.addEventListener("click", () => { this.addingModel = true; this.draw(); this.contentEl.querySelector<HTMLInputElement>(".qa-ms-add input")?.focus(); });
-      return;
-    }
-    const row = section.createDiv({ cls: "qa-ms-add" });
+    if (!this.addingModel) return;
+    const row = section.createDiv({ cls: "qa-ms-add qa-ms-add-model" });
     const input = labeledInput(row, "模型 ID", "text", "qa-ms-input is-mono", { placeholder: "例如 gpt-5.2", autocomplete: "off", spellcheck: "false" });
+    input.value = this.modelIdDraft;
+    input.addEventListener("input", () => { this.modelIdDraft = input.value; });
+    const displayName = labeledInput(row, ct("displayName"), "text", "qa-ms-input", { placeholder: ct("displayName") });
+    displayName.value = this.modelNameDraft;
+    displayName.addEventListener("input", () => { this.modelNameDraft = displayName.value; });
     const error = section.createDiv({ cls: "qa-inline-error", attr: { role: "alert" } });
     const submit = async () => {
-      const id = input.value.trim();
-      if (!id || /\s/.test(id)) { error.setText("请输入不含空格的模型 ID"); return; }
+      if (this.busy) return;
       const latest = this.provider;
       if (!latest) return;
-      await this.save({ ...latest, enabledModels: [...new Set([...(latest.enabledModels ?? []), id])], model: latest.model || id });
-      this.addingModel = false; this.draw();
+      try {
+        const next = addManualProviderModel(latest, input.value, displayName.value);
+        this.busy = "add-model";
+        await this.save(next);
+        this.addingModel = false; this.modelIdDraft = ""; this.modelNameDraft = "";
+        new Notice(ct("modelAdded"));
+      } catch (failure) { error.setText(connectionError(failure)); }
+      finally { this.busy = ""; if (!this.addingModel && !this.closed) this.draw(); }
     };
     row.createEl("button", { cls: "qa-ms-button", text: "添加", attr: { type: "button" } }).addEventListener("click", () => void submit());
-    row.createEl("button", { cls: "qa-ms-button is-quiet", text: "取消", attr: { type: "button" } }).addEventListener("click", () => { this.addingModel = false; this.draw(); });
+    row.createEl("button", { cls: "qa-ms-button is-quiet", text: "取消", attr: { type: "button" } }).addEventListener("click", () => { this.addingModel = false; this.modelIdDraft = ""; this.modelNameDraft = ""; this.draw(); });
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); void submit(); }
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); this.addingModel = false; this.draw(); }
@@ -510,27 +569,39 @@ class ProviderModal extends Modal {
     if (provider.model === id) name.createSpan({ cls: "qa-pill is-strong", text: "默认" });
     else if (recommended && !on) name.createSpan({ cls: "qa-pill", text: "推荐" });
     const capabilities = resolveModel(provider, id);
-    const meta = [label !== id ? id : "", !model ? "手动添加" : "", capabilities.contextWindow ? `${compactTokens(capabilities.contextWindow)} 上下文` : "", capabilities.vision ? "图片" : "", capabilities.thinking ? "思考" : ""].filter(Boolean).join(" · ");
+    const meta = [label !== id ? id : "", manualProviderModels(provider).some((item) => item.id === id) ? ct("manualEntry") : "", capabilities.contextWindow ? `${compactTokens(capabilities.contextWindow)} 上下文` : "", capabilities.vision ? "图片" : "", capabilities.thinking ? "思考" : ""].filter(Boolean).join(" · ");
     if (meta) text.createDiv({ cls: "qa-ms-row-sub", text: meta });
     const tools = row.createDiv({ cls: "qa-ms-model-tools" });
     if (on && provider.model !== id) {
       const makeDefault = tools.createEl("button", { cls: "qa-ms-text-button", text: "设为默认", attr: { type: "button" } });
-      makeDefault.addEventListener("click", async () => { await this.save({ ...provider, model: id }); this.draw(); });
+      makeDefault.disabled = Boolean(this.busy);
+      makeDefault.addEventListener("click", () => void this.updateModel({ ...provider, model: id }));
     }
-    if (on) iconAction(tools, "sliders-horizontal", `${label} 的参数`).addEventListener("click", () => { this.detailModel = id; this.draw(); });
+    const check = iconAction(tools, "flask-conical", `${label} · 测试`);
+    check.disabled = Boolean(this.busy);
+    check.addEventListener("click", () => void this.testModel({ ...provider, model: id }, this.secret(provider)));
+    if (on) { const options = iconAction(tools, "sliders-horizontal", `${label} 的参数`); options.disabled = Boolean(this.busy); options.addEventListener("click", () => { this.detailModel = id; this.draw(); }); }
     hostSwitch(tools, on, `在对话中使用 ${label}`, async (checked) => {
+      if (this.busy) return;
       if (checked) enabled.add(id); else enabled.delete(id);
-      const next = { ...provider, enabledModels: ids.filter((item) => enabled.has(item)) };
+      const next = { ...provider, manualModels: manualProviderModels(provider), enabledModels: ids.filter((item) => enabled.has(item)) };
       if (!checked && provider.model === id) next.model = next.enabledModels[0] ?? "";
       if (checked && !provider.model) next.model = id;
-      await this.save(next);
-      this.draw();
-    });
+      await this.updateModel(next);
+    }).setDisabled(Boolean(this.busy));
+  }
+
+  private async updateModel(provider: ProviderConfig): Promise<void> {
+    if (this.busy) return;
+    this.busy = "save-model"; this.modelError = ""; this.draw();
+    try { await this.save(provider); }
+    catch (error) { this.modelError = connectionError(error); }
+    finally { this.busy = ""; if (!this.closed) this.draw(); }
   }
 
   private drawModelPage(provider: ProviderConfig): void {
     const id = this.detailModel;
-    const model = provider.models?.find((item) => item.id === id);
+    const model = providerModels(provider).find((item) => item.id === id);
     modalTitle(this, model?.name || id, undefined, () => { this.detailModel = ""; this.draw(); });
     const options = provider.modelOptions?.[id] ?? {};
     const save = async (patch: Partial<ModelOptions>) => {
@@ -590,16 +661,13 @@ class ProviderModal extends Modal {
   private async testModel(provider: ProviderConfig, key: string): Promise<void> {
     const model = provider.model || provider.enabledModels?.[0];
     if (!model || this.busy) return;
+    const operation = new AbortController(); this.operation = operation;
     this.busy = "test"; this.draw();
     try {
-      let response = "";
-      await new ApiBackend({ ...provider, model }, key).send(
-        { prompt: "只回复 OK。", systemPrompt: "", cwd: null, model, modelOptions: { maxOutputTokens: 128 }, permissionMode: "plan", history: [] },
-        { onText: (text) => { response += text; }, onStatus: () => {} }, AbortSignal.timeout(25_000));
-      if (!response.trim()) throw new Error("模型没有返回文字");
+      await verifyModel(provider, key, model, operation.signal);
       new Notice(`${model} 测试成功`);
-    } catch (error) { new Notice(`测试失败：${error instanceof Error ? error.message : String(error)}`); }
-    finally { this.busy = ""; this.draw(); }
+    } catch (error) { new Notice(`测试失败：${connectionError(error)}`); }
+    finally { this.busy = ""; if (!this.closed) this.draw(); }
   }
 }
 

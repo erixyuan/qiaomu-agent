@@ -54,7 +54,7 @@
 1. 从 [0.5.0 Release](https://github.com/joeseesun/qiaomu-agent/releases/tag/0.5.0) 下载同一版本的 `main.js`、`manifest.json`、`styles.css`。
 2. 把三个文件放进你要使用的库的 `.obsidian/plugins/qiaomu-agent/` 文件夹；没有该文件夹就新建。
 3. 重启 Obsidian，在「设置 → 第三方插件」启用 **Qiaomu Agent**，打开右侧的 Agent 侧边栏。
-4. 选择已安装并登录的本机 Agent，或在插件设置中添加模型服务商及 API Key。先保持「只读」，试着问一句「总结当前笔记」。
+4. 选择已安装并登录的本机 Agent，或在插件设置中添加模型服务商及 API Key。自定义接口保存后，可获取模型列表并启用，或手动添加完整模型 ID；两种方式可以同时使用。先保持「只读」，试着问一句「总结当前笔记」。
 
 社区上架后，也可以在 Obsidian 的「设置 → 第三方插件 → 浏览」中搜索 **Qiaomu Agent** 安装。插件本身不附带模型账户或免费额度；云端调用可能产生服务商费用。
 
@@ -69,7 +69,7 @@
 <details>
 <summary>更多：联网与库外访问细节</summary>
 
-本插件没有自己的服务器，不收集遥测数据。使用云端模型时，你的消息、附加的笔记、选区、图片、网页内容和所选技能正文，会发送到你选择的服务商 API 地址。拉取模型列表、验证 Key 时也会请求该服务商。模型自带搜索可能单独计费；连接 Brave Search 后，搜索词会发送到 `api.search.brave.com`，Brave Key 留在本机。网页读取只接受公开 HTTP/HTTPS 地址，本机和内网地址会被拒绝。打开「设置 → 关于」时会从 `radio.qiaomu.ai` 加载作者公众号和打赏二维码图片。API Key 保存在 Obsidian SecretStorage 中，不写入插件数据文件。
+本插件没有自己的服务器，不收集遥测数据。使用云端模型时，你的消息、附加的笔记、选区、图片、网页内容和所选技能正文，会发送到你选择的服务商 API 地址。拉取模型列表、验证 Key 时也会请求该服务商。模型自带搜索可能单独计费；连接 Brave Search 后，搜索词会发送到 `api.search.brave.com`，Brave Key 留在本机。网页读取只接受公开 HTTP/HTTPS 地址，本机和内网地址会被拒绝。打开「设置 → 关于」时会从 `radio.qiaomu.ai` 加载作者公众号和打赏二维码图片。API Key 保存在 Obsidian SecretStorage 中，不写入插件数据文件。“粘贴密钥”仅在点击后读取剪贴板，不会自动读取。手机端可直接粘贴，或使用输入框原生粘贴；系统可能要求粘贴权限。
 
 桌面端可启动已安装的本机 Agent CLI，并在系统临时目录创建仅当前用户可读写的 MCP 配置文件，运行结束后删除。它可读取已配置的本机技能目录；导入技能时将所选文件夹复制到个人技能目录。选择「保存到 Codex」工具连接时会通过 `codex mcp add` 写入 Codex 全局配置。选择「完全访问」时，Agent 可以读写电脑文件并运行命令；读取凭据、改动启动项、大范围删除和高风险命令仍会被拦截或先询问。
 
@@ -93,4 +93,4 @@
 
 **Try it:** Connect a logged-in local agent or add your provider API key. With the default read-only permission, ask “Summarize the current note.” To try editing, select text in a test note, switch permission to “modify current vault,” ask for a rewrite, and review the recorded change. Local agents follow their own approval settings.
 
-**Privacy and limits:** There is no Qiaomu conversation server or telemetry. Cloud model requests send your prompt and attached context to your selected provider, which may charge for usage. Keys are stored in Obsidian SecretStorage. Desktop use was verified on macOS; mobile behavior has not been checked on physical devices. Local CLI agents and MCP connections are desktop-only. See [CLI compatibility notes](docs/cli-compatibility.md), [license](LICENSE), and [Issues](https://github.com/joeseesun/qiaomu-agent/issues).
+**Privacy and limits:** There is no Qiaomu conversation server or telemetry. Cloud model requests send your prompt and attached context to your selected provider, which may charge for usage. Keys are stored in Obsidian SecretStorage. The Paste API key button reads the clipboard only after an explicit click; it may require system paste permission. Desktop use was verified on macOS; mobile behavior has not been checked on physical devices. Local CLI agents and MCP connections are desktop-only. See [CLI compatibility notes](docs/cli-compatibility.md), [license](LICENSE), and [Issues](https://github.com/joeseesun/qiaomu-agent/issues).

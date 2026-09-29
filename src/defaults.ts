@@ -1,3 +1,4 @@
+import { manualProviderModels } from "./services/provider-models";
 import type { ModelChoice, QiaomuSettings } from "./types";
 import { migrateProviders } from "./services/model-sources";
 import { recommendedModels } from "./services/key-detection";
@@ -75,6 +76,7 @@ export function normalizeSettings(raw: unknown): QiaomuSettings {
       // "Nothing selected = everything" is gone: never-curated providers start with recommended models.
       .map((item) => ({
         ...item,
+        manualModels: manualProviderModels(item),
         enabledModels: Array.isArray(item.enabledModels) ? item.enabledModels : recommendedModels(item.provider, item.models ?? []),
         showInPicker: item.showInPicker !== false,
         modelOptions: Object.fromEntries(Object.entries(item.modelOptions ?? {}).filter(([id, value]) => typeof id === "string" && value && typeof value === "object")

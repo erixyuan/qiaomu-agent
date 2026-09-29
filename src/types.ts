@@ -17,7 +17,9 @@ export interface ProviderConfig extends ApiConnection {
   name?: string;
   /** Last list reported by the vendor. */
   models?: ModelChoice[];
-  /** Models shown in the picker; empty means all of `models`. */
+  /** Explicit user models, independent of the remote discovery cache. */
+  manualModels?: Array<Pick<ModelChoice, "id" | "name">>;
+  /** Models shown in the picker; empty means none. */
   enabledModels?: string[];
   /** Hide this provider from the composer without deleting its credentials. */
   showInPicker?: boolean;
