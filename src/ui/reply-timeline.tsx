@@ -83,7 +83,7 @@ export function ReplyTimeline({ message, active, statusText, renderText, renderA
     const label = pending.length ? "等待你的确认" : current ? activityLabel(current) : streaming ? "正在回复…" : statusText && !/连接|链接|思考/.test(statusText) ? statusText : "正在思考…";
     return <>
       {segments.filter((segment) => segment.kind === "text" || segment.kind === "approval" || segment.kind === "question").map(render)}
-      {steps.length || segments.some((segment) => segment.kind === "plan") ? <details className="qa-live-work qa-worked qa-reply-segment">
+      {steps.length || segments.some((segment) => segment.kind === "plan") ? <details key="live-work" className="qa-live-work qa-worked qa-reply-segment">
         <summary>{!pending.length && <WorkingGlyph />}<span className="qa-live-label" role="status">{label}</span><ChevronRight className="qa-chevron" size={14} aria-hidden="true" /></summary>
         <div className="qa-worked-body">{segments.filter((segment) => segment.kind === "steps" || segment.kind === "plan").map(render)}</div>
       </details> : !pending.length && <WorkingStatus label={label} />}
@@ -97,14 +97,15 @@ export function ReplyTimeline({ message, active, statusText, renderText, renderA
   if (!work.some((segment) => segment.kind === "steps" || segment.kind === "plan")) return <>{segments.map(render)}</>;
   const { createdAt, finishedAt } = message.metadata ?? {};
   const steps = work.reduce((sum, segment) => sum + (segment.kind === "steps" ? segment.steps.length : 0), 0);
+  const failed = work.flatMap((segment) => segment.kind === "steps" ? segment.steps : []).filter((step) => step.status === "failed");
   const summary = createdAt && finishedAt ? `已处理 ${formatDuration(finishedAt - createdAt)}` : `已处理 ${steps} 步`;
   return <>
-    <details className="qa-worked qa-reply-segment">
+    <details key="completed-work" className="qa-worked qa-reply-segment">
       <summary><span>{summary}</span><ChevronRight className="qa-chevron" size={14} aria-hidden="true" /></summary>
       <div className="qa-worked-body">{work.map(render)}</div>
     </details>
     {pending.map(render)}
-    {work.flatMap((segment) => segment.kind === "steps" ? segment.steps : []).filter((step) => step.status === "failed").map((step) => <div key={`failed-${step.id}`} className="qa-step-failed" role="alert">操作失败：{step.label}</div>)}
+    {!final && failed.length > 0 && <div className="qa-step-failed" role="alert">有 {failed.length} 项操作未完成，请展开处理记录查看详情。</div>}
     {final && render(final)}
   </>;
 }

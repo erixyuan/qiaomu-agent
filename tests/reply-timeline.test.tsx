@@ -24,7 +24,7 @@ it("replaces the initial indicator with one collapsed live row and preserves man
   expect(screen.getByRole("status").textContent).toBe("正在阅读内容…");
   expect(details.open).toBe(true);
 });
-it("keeps approvals and failures outside the collapsed log, including after stopping", () => {
+it("keeps pending approvals visible and summarizes failures without a final reply after stopping", () => {
   const message: AgentMessage = { ...initial, parts: [
     { type: "data-activity", data: { id: "1", label: "读取失败", status: "failed" } },
     { type: "data-approval", data: { id: "p", title: "允许写入？", status: "pending", options: [] } },
@@ -36,6 +36,44 @@ it("keeps approvals and failures outside the collapsed log, including after stop
   rerender(<ReplyTimeline {...props} message={message} active={false} />);
   expect(screen.getByRole("button", { name: "允许一次" }).closest("details")).toBeNull();
   expect(screen.getByRole("alert").closest("details")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toBe("有 1 项操作未完成，请展开处理记录查看详情。");
+});
+it("folds failed attempts into the completed record after recovery and keeps their error details", () => {
+  const message: AgentMessage = { ...initial, parts: [
+    { type: "data-activity", data: { id: "1", kind: "command", label: "download first-source", status: "failed", detail: "Source unavailable" } },
+    { type: "data-activity", data: { id: "2", kind: "command", label: "download fallback", status: "running" } },
+  ] };
+  const { rerender, container } = render(<ReplyTimeline {...props} message={message} />);
+  expect(screen.getByRole("alert").textContent).toContain("download first-source");
+  const live = container.querySelector(".qa-live-work") as HTMLDetailsElement;
+  fireEvent.click(live.querySelector("summary")!);
+  expect(live.open).toBe(true);
+  const completed: AgentMessage = { ...message, parts: [message.parts[0]!,
+    { type: "data-activity", data: { id: "2", kind: "command", label: "download fallback", status: "completed" } },
+    { type: "text", text: "已下载：song.mp3" },
+  ] };
+  rerender(<ReplyTimeline {...props} message={completed} active={false} />);
+  const record = container.querySelector(".qa-worked") as HTMLDetailsElement;
+  expect(record.open).toBe(false);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("已下载：song.mp3").closest("details")).toBeNull();
+  expect(screen.getByText("download first-source").closest(".qa-worked")).toBe(record);
+  fireEvent.click(record.querySelector("summary")!);
+  const failed = container.querySelector(".qa-step.is-failed") as HTMLDetailsElement;
+  fireEvent.click(failed.querySelector("summary")!);
+  expect(record.open).toBe(true);
+  expect(failed.open).toBe(true);
+  expect(screen.getByText("Source unavailable").closest(".qa-worked")).toBe(record);
+});
+it("keeps the final failure explanation visible without duplicating the failed command", () => {
+  const message: AgentMessage = { ...initial, parts: [
+    { type: "data-activity", data: { id: "1", label: "download first-source", status: "failed" } },
+    { type: "text", text: "下载未完成，请提供可访问的链接后重试。" },
+  ] };
+  render(<ReplyTimeline {...props} message={message} active={false} />);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("下载未完成，请提供可访问的链接后重试。").closest("details")).toBeNull();
+  expect(screen.getAllByText("download first-source")).toHaveLength(1);
 });
 it("keeps unanswered questions visible while working and after stopping", () => {
   const message = { ...initial, parts: [
