@@ -21,6 +21,8 @@ import { Message, MessageContent, MessageAction, MessageActions } from "../compo
 import { PromptInput, PromptInputFooter, PromptInputHeader, PromptInputSubmit, PromptInputTextarea, PromptInputTools } from "../components/ai-elements/prompt-input";
 import { splitMermaid } from "../services/mermaid-content";
 import { internalLinkTarget, tidyInternalLinks } from "../services/markdown-links";
+import { localFileTarget } from "../services/local-file-links";
+import { openArtifact, showLocalFileMenu } from "./local-file-menu";
 import { MermaidDiagram } from "./mermaid-diagram";
 import { ReplyTimeline, WorkingStatus } from "./reply-timeline";
 import { QuestionCard } from "./question-card";
@@ -85,15 +87,29 @@ function HostMarkdown({ text, sourcePath, app, parent }: { text: string; sourceP
     if (!host) return;
     const open = (event: MouseEvent) => {
       if (event.type === "auxclick" && event.button !== 1) return;
-      const anchor = event.target instanceof Element ? event.target.closest("a.internal-link") : null;
+      const anchor = event.target instanceof host.ownerDocument.defaultView!.Element ? event.target.closest("a") : null;
+      const raw = anchor?.getAttribute("data-href") ?? anchor?.getAttribute("href");
+      if (raw && localFileTarget(app, raw, sourcePath)) {
+        event.preventDefault(); event.stopPropagation();
+        openArtifact(app, raw, sourcePath);
+        return;
+      }
       const link = anchor && internalLinkTarget(anchor);
       if (!link) return;
       event.preventDefault();
       void app.workspace.openLinkText(link, sourcePath, event.button === 1 ? "tab" : Keymap.isModEvent(event));
     };
-    host.addEventListener("click", open);
-    host.addEventListener("auxclick", open);
-    return () => { host.removeEventListener("click", open); host.removeEventListener("auxclick", open); };
+    const menu = (event: MouseEvent) => {
+      const anchor = event.target instanceof host.ownerDocument.defaultView!.Element ? event.target.closest("a") : null;
+      const raw = anchor?.getAttribute("data-href") ?? anchor?.getAttribute("href");
+      if (!raw || !localFileTarget(app, raw, sourcePath)) return;
+      event.preventDefault(); event.stopPropagation();
+      showLocalFileMenu(app, raw, sourcePath, event);
+    };
+    host.addEventListener("click", open, true);
+    host.addEventListener("auxclick", open, true);
+    host.addEventListener("contextmenu", menu, true);
+    return () => { host.removeEventListener("click", open, true); host.removeEventListener("auxclick", open, true); host.removeEventListener("contextmenu", menu, true); };
   }, [app, sourcePath]);
   return <div className="qa-markdown-host" ref={target} />;
 }

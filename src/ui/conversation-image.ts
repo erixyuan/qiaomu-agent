@@ -1,6 +1,8 @@
-import { App, MarkdownView, Menu, Modal, Notice, Setting, TFile, requestUrl, type EditorPosition } from "obsidian";
+import { App, MarkdownView, Menu, Modal, Notice, Platform, Setting, TFile, requestUrl, type EditorPosition } from "obsidian";
 import type { ChatAttachment } from "../types";
 import { readAttachment } from "../services/attachments";
+import { localFileTarget } from "../services/local-file-links";
+import { openArtifact, revealFileLabel } from "./local-file-menu";
 
 function imageName(file: ChatAttachment): string {
   const extension = file.mediaType === "image/jpeg" ? "jpg" : file.mediaType.split("/")[1] || "png";
@@ -95,6 +97,8 @@ export class ImageInsertDialog extends Modal {
 
 export function showConversationImageMenu(app: App, image: ChatAttachment, event: MouseEvent, note: TFile | null, onReference: (image: ChatAttachment) => void): void {
   const menu = new Menu();
+  const target = image.vaultPath || image.url;
+  if (Platform.isDesktopApp && target && localFileTarget(app, target)) menu.addItem((item) => item.setTitle(revealFileLabel()).setIcon("folder-open").onClick(() => openArtifact(app, target, "", true)));
   menu.addItem((item) => item.setTitle("下载图片").setIcon("download").onClick(() => void downloadConversationImage(app, image).catch((error) => new Notice(`下载失败：${String(error)}`))));
   menu.addItem((item) => item.setTitle("插入到当前笔记…").setIcon("file-plus-2").onClick(() => new ImageInsertDialog(app, image, note).open()));
   menu.addItem((item) => item.setTitle("作为参考图加入对话").setIcon("image-plus").onClick(() => onReference(image)));
