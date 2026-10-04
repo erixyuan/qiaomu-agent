@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Chat } from "@ai-sdk/react";
 import type QiaomuAgentPlugin from "./main";
-import type { AgentSkill, PermissionMode, ChatAttachment, ChatMessage, ChatRequest, EditorSelectionContext, GeneratedAttachment, ModelChoice, QuestionAnswers, QuestionRequest } from "./types";
+import type { AgentSkill, PermissionMode, ChatAttachment, ChatMessage, ChatRequest, EditorSelectionContext, GeneratedAttachment, QuestionAnswers, QuestionRequest } from "./types";
 import { ADD_COMMANDS, commandHotkey, type AddKind } from "./services/hotkeys";
 import { FilePicker, FolderPicker, AppendDialog, FullAccessDialog, WebPageDialog } from "./ui/host-dialogs";
 import { PromptLibraryModal } from "./ui/prompt-library-panel";
@@ -53,9 +53,6 @@ export class ChatView extends ItemView {
   private addRequest: { kind: AddKind; version: number } = { kind: "upload", version: 0 };
   private promptRequest: { id: string; version: number } = { id: "", version: 0 };
   private statusText = "";
-  private models: ModelChoice[] = [];
-  private capabilitiesKey = "";
-  private connectionIdentity = "";
   private persistQueue: Promise<void> = Promise.resolve();
   private readonly backendOwner = crypto.randomUUID();
   private readonly sourceState = new Map<string, { loading?: boolean; error?: string }>();
@@ -210,9 +207,6 @@ export class ChatView extends ItemView {
   refreshControls(): void {
     const settings = this.plugin.settings;
     const selected = this.plugin.backendService.effectiveSelection(settings.backendKind === "cli" && settings.preferredCli ? `cli:${settings.preferredCli}` : settings.backendKind);
-    const identity = `${selected}:${settings.api.provider}:${settings.api.baseUrl}:${settings.api.protocol}:${settings.api.secretId}`;
-    if (identity !== this.connectionIdentity) { this.models = []; this.capabilitiesKey = ""; }
-    this.connectionIdentity = identity;
     this.selectedBackend = selected;
     this.render();
     const ready = this.plugin.backendService.getBackendOptions().find((option) => option.value === selected)?.ready;
@@ -227,13 +221,6 @@ export class ChatView extends ItemView {
         cwd: this.plugin.skillService.getVaultRoot(),
         permissionMode: settings.permissionMode === "full" && !fullAccessFor(backend.id) ? "edit" : settings.permissionMode,
       }).catch((error: unknown) => console.debug("Qiaomu Agent: preparation failed; send will retry", error));
-      if (this.capabilitiesKey !== key) {
-        this.capabilitiesKey = key;
-        this.models = key.startsWith("cli:")
-          ? settings.agentModelCache[key.slice(4)]?.models ?? []
-          : activeProvider(settings)?.models ?? [];
-        this.render();
-      }
     }
   }
 
@@ -447,13 +434,13 @@ export class ChatView extends ItemView {
   }
   private modelSources(): ModelSource[] {
     const settings = this.plugin.settings;
-    const currentKey = (() => { try { return this.selectionKey(); } catch { return ""; } })();
     const agents: ModelSource[] = this.plugin.backendService.getDetections().filter((d) => d.callable && agentShown(settings, d.id)).map((d) => {
       const key = `cli:${d.id}`;
       const cached = settings.agentModelCache[d.id]?.models;
-      const models = currentKey === key && this.models.length ? this.models : cached ?? [];
+      // Settings owns the catalog; a view-local copy would mask later refreshes.
+      const models = cached ?? [];
       const state = this.sourceState.get(key) ?? {};
-      return { key, kind: "agent", label: d.label, icon: agentIconKey(d.id), ...visibleAgentModels(settings, d.id, models), allowCustom: !Object.hasOwn(settings.agentEnabledModels, d.id), canListModels: Boolean(nativeTransportFor(d.id, d.nativePath) || d.id === "antigravity" || d.id === "pi"), loaded: Boolean(cached?.length) || (currentKey === key && this.models.length > 0), ...state };
+      return { key, kind: "agent", label: d.label, icon: agentIconKey(d.id), ...visibleAgentModels(settings, d.id, models), allowCustom: !Object.hasOwn(settings.agentEnabledModels, d.id), canListModels: Boolean(nativeTransportFor(d.id, d.nativePath) || d.id === "antigravity" || d.id === "pi"), loaded: Boolean(cached?.length), ...state };
     });
     const providers: ModelSource[] = settings.providers
       .filter((p) => p.showInPicker !== false && (Boolean(this.app.secretStorage.getSecret(p.secretId)) || permitsEmptyKey(p)))
@@ -571,7 +558,8 @@ export class ChatView extends ItemView {
     const sources = this.modelSources();
     const picked = this.pickerSelection();
     const source = sources.find((item) => item.key === picked?.source);
-    const model = source?.models.find((m) => m.id === picked?.model) ?? this.models.find((m) => m.id === picked?.model);
+    const catalog = key.startsWith("cli:") ? this.plugin.settings.agentModelCache[key.slice(4)]?.models : activeProvider(this.plugin.settings)?.models;
+    const model = source?.models.find((m) => m.id === picked?.model) ?? catalog?.find((m) => m.id === picked?.model);
     const fullAccessAvailable = fullAccessFor(key.startsWith("api:") ? "api" : key);
     const permission = this.plugin.settings.permissionMode === "full" && !fullAccessAvailable ? "edit" : this.plugin.settings.permissionMode;
     this.root.render(createElement(ChatPanel, {
