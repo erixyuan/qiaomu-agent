@@ -1,3 +1,4 @@
+import { watchPaneDividers } from "./pane-dividers";
 import { FuzzySuggestModal, MarkdownView, Menu, Notice, Platform, Plugin, TFile, WorkspaceLeaf, type Editor, type MarkdownFileInfo } from "obsidian";
 import { ChatView, VIEW_TYPE_QIAOMU_AGENT } from "./chat-view";
 import { DEFAULT_SETTINGS, normalizeSettings } from "./defaults";
@@ -35,6 +36,7 @@ export default class QiaomuAgentPlugin extends Plugin {
   private readonly promptCommands = new Set<string>();
 
   override async onload(): Promise<void> {
+    watchPaneDividers(this);
     this.settings = normalizeSettings(await this.loadData());
     // A lone default connection is only kept as a provider when a key was actually saved for it.
     const api = this.settings.api;
