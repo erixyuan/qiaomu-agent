@@ -1149,6 +1149,7 @@ details[open] > .qa-disclosure .qa-disclosure-chevron { transform: rotate(90deg)
   --text-selection:rgba(255,255,255,.18); --text-on-accent:#000; --text-on-accent-inverted:#000;
 }
 :is(.qiaomu-agent,.qa-font-preview):is([data-qa-theme="light"],[data-qa-theme="paper"],[data-qa-theme="sage"],[data-qa-theme="mist"],[data-qa-theme="dark"],[data-qa-theme="black"]) {
+  --setting-items-background:var(--qa-palette-subtle); --setting-items-border-color:var(--qa-palette-border);
   --background-primary:var(--qa-palette-bg); --background-primary-alt:var(--qa-palette-subtle); --background-secondary:var(--qa-palette-subtle); --background-secondary-alt:var(--qa-palette-subtle);
   --background-modifier-hover:var(--qa-palette-hover); --background-modifier-border:var(--qa-palette-border); --background-modifier-border-hover:var(--qa-palette-border-strong); --background-modifier-form-field:var(--qa-palette-bg);
   --text-normal:var(--qa-palette-fg); --text-muted:var(--qa-palette-muted); --text-faint:var(--qa-palette-faint); --text-error:var(--qa-palette-error);
