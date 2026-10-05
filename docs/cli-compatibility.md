@@ -23,7 +23,9 @@ References: [Grok ACP](https://docs.x.ai/build/cli/headless-scripting), [Claude 
 
 macOS 桌面应用的 `PATH` 可能不包含 Node。即使找到 nvm 目录下的 `pi`，它的 `#!/usr/bin/env node` 入口仍可能启动失败，导致设置和模型菜单不显示 Pi。直接检测失败后，插件优先尝试同目录的 Node，再尝试其他已知 Node 路径；模型列表和 RPC 对话沿用检测成功的运行时与脚本路径。
 
-2026-10-05 在精简 `PATH` 的隔离目录中使用 Pi 1.0.2 验证：检测成功，模型列表返回 461 项。安装到 Obsidian 1.13.7 后，设置页识别 Pi 1.0.2 并读取模型列表，对话模型菜单显示「Pi 默认模型」。隔离测试的默认模型请求返回服务商 HTTP 403，尚未验证真实模型回复；自动化测试覆盖直接启动、Node 启动、模型列表、连续 RPC 对话和会话重置。
+2026-10-05 使用 Pi 1.0.2 验证：精简 `PATH` 的隔离目录中检测成功；Obsidian 1.13.7 设置页识别 Pi 并读取模型列表，对话模型菜单显示「Pi 默认模型」。使用 `openai-codex/gpt-6.1-sol` 在已安装插件中连续两轮无工具测试均返回 `QIAOMU_PI_OK`。自动化测试覆盖直接启动、Node 启动、模型列表、连续 RPC 对话和会话重置。
+
+模型服务需要代理时，Pi 1.0.2 可在 `~/.pi/agent/settings.json` 中设置 `httpProxy` 为实际 HTTP 代理 URL，不能依赖桌面应用继承终端的代理变量。上述模型在直连时复现 `fetch failed`，显式配置已有的本机代理后，隔离 RPC 测试和 Obsidian 连续对话均成功。配置方式见 [Pi 网络设置](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md#network-and-retries)。
 
 ## Historical headless CLI check
 
