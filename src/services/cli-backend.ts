@@ -53,7 +53,7 @@ export class CliBackend implements ChatBackend {
     if (!require) throw new Error("本机模型列表只支持桌面版 Obsidian");
     const childProcess = require("child_process") as ChildProcessModule;
     const isPi = this.detection.id === "pi";
-    return await new Promise((resolve, reject) => childProcess.execFile(this.detection.path!, isPi ? ["--list-models"] : ["models"],
+    return await new Promise((resolve, reject) => childProcess.execFile(this.detection.path!, [...(this.detection.argsPrefix ?? []), ...(isPi ? ["--list-models"] : ["models"])],
       { timeout: 15_000, windowsHide: true, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
         if (error) { reject(new Error(stripAnsi(stderr || stdout).trim() || "请先在 Antigravity CLI 中登录")); return; }
         const models = isPi

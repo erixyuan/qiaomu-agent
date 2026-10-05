@@ -19,6 +19,12 @@ ZCode's App Server is version-sensitive and not ACP. The current integration tar
 
 References: [Grok ACP](https://docs.x.ai/build/cli/headless-scripting), [Claude Agent ACP](https://github.com/agentclientprotocol/claude-agent-acp), [Pi RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md), [ZCode CLI](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/README.md). ZCode App Server event shapes were also cross-checked against the community [zcode-acp protocol notes](https://github.com/william0wang/zcode-acp/blob/main/docs/PROTOCOL.md); those notes are not an official stability guarantee.
 
+## Pi 的 nvm 安装检测
+
+macOS 桌面应用的 `PATH` 可能不包含 Node。即使找到 nvm 目录下的 `pi`，它的 `#!/usr/bin/env node` 入口仍可能启动失败，导致设置和模型菜单不显示 Pi。直接检测失败后，插件优先尝试同目录的 Node，再尝试其他已知 Node 路径；模型列表和 RPC 对话沿用检测成功的运行时与脚本路径。
+
+2026-10-05 在精简 `PATH` 的隔离目录中使用 Pi 1.0.2 验证：检测成功，模型列表返回 461 项。安装到 Obsidian 1.13.7 后，设置页识别 Pi 1.0.2 并读取模型列表，对话模型菜单显示「Pi 默认模型」。隔离测试的默认模型请求返回服务商 HTTP 403，尚未验证真实模型回复；自动化测试覆盖直接启动、Node 启动、模型列表、连续 RPC 对话和会话重置。
+
 ## Historical headless CLI check
 
 Checked 2026-09-20 on macOS, using an isolated `/tmp` working directory and read-only/no-tool prompts. These are older versions and do not describe the current native transport.

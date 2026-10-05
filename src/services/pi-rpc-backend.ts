@@ -110,7 +110,7 @@ export class PiRpcBackend implements ChatBackend {
     if (this.child) await this.shutdown();
     const require = getRuntimeRequire();
     if (!require || !this.detection.path) throw new Error("Pi RPC 仅支持桌面版 Obsidian");
-    const args = ["--mode", "rpc", "--no-session", "--no-skills", "--append-system-prompt", request.systemPrompt,
+    const args = [...(this.detection.argsPrefix ?? []), "--mode", "rpc", "--no-session", "--no-skills", "--append-system-prompt", request.systemPrompt,
       ...(request.permissionMode === "plan" ? ["--tools", "read,grep,find,ls"] : []),
       ...(request.model ? ["--model", request.model] : []),
       ...(request.reasoningEffort ? ["--thinking", request.reasoningEffort] : [])];

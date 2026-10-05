@@ -1,16 +1,22 @@
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { PiRpcBackend } from "../src/services/pi-rpc-backend";
-import type { ChatRequest } from "../src/types";
+import type { ChatRequest, CliDetection } from "../src/types";
 
-const mock = vi.hoisted(() => ({ spawn: vi.fn(), commands: [] as string[] }));
-vi.mock("../src/services/runtime-require", () => ({ getRuntimeRequire: () => (name: string) => name === "child_process" ? { spawn: mock.spawn } : { env: {} } }));
+const mock = vi.hoisted(() => ({ spawn: vi.fn(), execFile: vi.fn(), commands: [] as string[] }));
+vi.mock("../src/services/runtime-require", () => ({ getRuntimeRequire: () => (name: string) => name === "child_process" ? { spawn: mock.spawn, execFile: mock.execFile } : { env: {} } }));
+afterEach(() => vi.clearAllMocks());
 
 const request: ChatRequest = { prompt: "你好", systemPrompt: "保留双链", cwd: "/tmp/vault", permissionMode: "plan", history: [] };
-const detection = { id: "pi", label: "Pi", command: "pi", path: "/pi", version: "0.87.1", available: true, callable: true };
+const detection: CliDetection = { id: "pi", label: "Pi", command: "pi", path: "/pi", version: "0.87.1", available: true, callable: true };
 
-it("keeps Pi RPC alive between prompts and streams deltas", async () => {
+it.each([
+  ["直接运行 Pi", detection],
+  ["通过 Node 运行 Pi", { ...detection, path: "/nvm/bin/node", argsPrefix: ["/nvm/bin/pi"] }],
+])("%s 时复用 RPC 进程并流式返回文本", async (_label, launch) => {
   mock.commands = [];
   mock.spawn.mockImplementation((_path: string, args: string[]) => {
+    expect(_path).toBe(launch.path);
+    expect(args.slice(0, (launch.argsPrefix?.length ?? 0) + 1)).toEqual([...(launch.argsPrefix ?? []), "--mode"]);
     expect(args).toContain("rpc");
     expect(args).toContain("read,grep,find,ls");
     const listeners: Record<string, (...args: unknown[]) => void> = {};
@@ -32,7 +38,7 @@ it("keeps Pi RPC alive between prompts and streams deltas", async () => {
     };
     return child;
   });
-  const backend = new PiRpcBackend(detection);
+  const backend = new PiRpcBackend(launch);
   const onText = vi.fn();
   await backend.prepare(request);
   expect(mock.commands).toEqual([]);
@@ -45,4 +51,13 @@ it("keeps Pi RPC alive between prompts and streams deltas", async () => {
   await backend.send(request, { onText, onStatus: vi.fn() }, new AbortController().signal);
   expect(mock.commands.slice(-2)).toEqual(["new_session", "prompt"]);
   await backend.shutdown();
+});
+
+it("通过检测到的 Node 运行 Pi 获取模型列表", async () => {
+  mock.execFile.mockImplementation((_path: string, _args: string[], _options: unknown, callback: (error: Error | null, stdout: string, stderr: string) => void) => {
+    callback(null, "provider  model\nopenai  gpt-5\n", "");
+  });
+  const backend = new PiRpcBackend({ ...detection, path: "/nvm/bin/node", argsPrefix: ["/nvm/bin/pi"] });
+  expect(await backend.listModels()).toMatchObject([{ id: "openai/gpt-5" }]);
+  expect(mock.execFile).toHaveBeenCalledWith("/nvm/bin/node", ["/nvm/bin/pi", "--list-models"], expect.any(Object), expect.any(Function));
 });
