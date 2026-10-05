@@ -25,7 +25,35 @@ macOS 桌面应用的 `PATH` 可能不包含 Node。即使找到 nvm 目录下�
 
 2026-10-05 使用 Pi 1.0.2 验证：精简 `PATH` 的隔离目录中检测成功；Obsidian 1.13.7 设置页识别 Pi 并读取模型列表，对话模型菜单显示「Pi 默认模型」。使用 `openai-codex/gpt-6.1-sol` 在已安装插件中连续两轮无工具测试均返回 `QIAOMU_PI_OK`。自动化测试覆盖直接启动、Node 启动、模型列表、连续 RPC 对话和会话重置。
 
-模型服务需要代理时，Pi 1.0.2 可在 `~/.pi/agent/settings.json` 中设置 `httpProxy` 为实际 HTTP 代理 URL，不能依赖桌面应用继承终端的代理变量。上述模型在直连时复现 `fetch failed`，显式配置已有的本机代理后，隔离 RPC 测试和 Obsidian 连续对话均成功。配置方式见 [Pi 网络设置](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md#network-and-retries)。
+## Pi 的动态代理环境
+
+桌面应用可能不继承终端的代理变量，导致 Pi 已能启动但模型请求报 `fetch failed`。插件在读取 Pi 模型列表、准备连接和每轮发送前生成子进程环境：优先保留显式 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`，同时兼容小写变量；缺少显式代理时，macOS 通过 `scutil --proxy` 读取当前启用的手动 HTTP/HTTPS 代理与例外列表。其他系统、未启用代理或检测失败时沿用原环境，不猜测地址和端口。
+
+```text
+读取模型列表 / 准备连接 / 发送消息
+                |
+                v
+         有显式代理环境变量？
+          |               |
+         有               无
+          |               |
+          v               v
+       沿用配置     macOS 当前手动代理
+                          |       |
+                         有       无
+                          |       |
+                          v       v
+                       使用代理   沿用原环境
+          \               |       /
+           +--------------+------+
+                          |
+                          v
+                 只传给 Pi 子进程
+```
+
+RPC 连接会比较本轮与上轮的代理环境；路由变化后重新启动 Pi，并用请求中的最近对话历史恢复上下文。插件不修改父进程环境、系统代理或 Pi 全局设置。已有 Pi `httpProxy` 设置仍由 Pi 自行处理，见 [Pi 网络设置](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md#network-and-retries)。自动检测仅支持 macOS 手动 HTTP/HTTPS 代理，不解析 PAC 或自动转换系统 SOCKS 配置。
+
+2026-10-05 使用 Pi 1.0.2 和 `openai-codex/gpt-6.1-sol` 验证：移除临时 Pi `httpProxy` 设置、清除测试进程的代理环境变量后，通过插件后端动态读取系统代理，连续两轮无工具 RPC 测试均返回 `QIAOMU_PI_OK`。自动化测试覆盖配置优先级、端口变化、连接重建与历史恢复、检测失败以及读取代理期间取消请求。
 
 ## Historical headless CLI check
 
